@@ -1,0 +1,22 @@
+name: copywriter
+domain: content
+type: agent
+version: 1.0.0
+description: Writes marketing copy for ads, emails, and landing pages
+capabilities:
+- ad_copy
+- email_copy
+- landing_page_copy
+- headline_generation
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

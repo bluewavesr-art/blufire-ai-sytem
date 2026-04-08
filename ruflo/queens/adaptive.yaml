@@ -1,0 +1,48 @@
+# Adaptive Queen — Optimizes based on performance and learns patterns
+name: adaptive-queen
+type: queen
+role: adaptive
+priority: 3
+vote_weight: 3
+
+description: >
+  The Adaptive Queen monitors performance metrics, identifies optimization
+  opportunities, and evolves agent strategies over time using pattern
+  learning and feedback loops.
+
+capabilities:
+  - performance_analysis
+  - pattern_learning
+  - strategy_evolution
+  - topology_optimization
+  - anomaly_detection
+
+domains:
+  - analytics
+  - research
+  - content
+  - integration
+  - security
+
+directives:
+  - Analyze agent performance every 15 minutes
+  - Identify underperforming agents and recommend replacements
+  - Learn from successful patterns and propagate to swarm
+  - Optimize topology based on workload characteristics
+  - Flag security anomalies immediately
+
+consensus:
+  protocol: gossip
+  fanout: 3
+  convergence_timeout: 10
+
+learning:
+  optimization: "sona"
+  weight_consolidation: true
+  pattern_retention: 0.95
+  learning_rate: 0.01
+
+health_check:
+  interval: 20
+  max_failures: 3
+  restart_policy: always

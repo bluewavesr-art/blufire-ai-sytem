@@ -1,0 +1,22 @@
+name: feedback-analyzer
+domain: product
+type: agent
+version: 1.0.0
+description: Analyzes product feedback for actionable insights
+capabilities:
+- sentiment_analysis
+- theme_extraction
+- prioritization
+- trend_tracking
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

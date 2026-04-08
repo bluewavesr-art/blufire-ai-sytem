@@ -1,0 +1,22 @@
+name: market-researcher
+domain: research
+type: agent
+version: 1.0.0
+description: Conducts market research and competitive analysis
+capabilities:
+- market_sizing
+- trend_analysis
+- competitor_profiling
+- opportunity_mapping
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3
