@@ -20,10 +20,11 @@ if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 20
 fi
 echo "  Node.js $(node -v)"
 
-# Install Python dependencies
+# Install Python dependencies in virtual environment
 echo "[3/7] Installing Python dependencies..."
-apt-get install -y python3 python3-pip python3-venv -qq
-pip3 install python-dotenv requests anthropic pyyaml --quiet
+apt-get install -y python3 python3-pip python3-venv python3-full -qq
+python3 -m venv /opt/blufire-venv
+/opt/blufire-venv/bin/pip install python-dotenv requests anthropic pyyaml --quiet
 
 # Clone or pull repository
 echo "[4/7] Setting up repository..."
@@ -65,7 +66,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/blufire-ai-system
-ExecStart=/usr/bin/python3 ruflo/orchestrator.py
+ExecStart=/opt/blufire-venv/bin/python3 ruflo/orchestrator.py
 Restart=always
 RestartSec=10
 Environment=PYTHONPATH=/opt/blufire-ai-system
