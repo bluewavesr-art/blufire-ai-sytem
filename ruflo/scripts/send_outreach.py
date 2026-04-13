@@ -1,17 +1,44 @@
 #!/usr/bin/env python3
-"""Blufire Outreach — Send personalized 20-min meeting request emails to NEW HubSpot leads."""
+"""Blufire Ruflo Outreach Agent — AI-crafted personalized emails for each prospect."""
 
 import json
 import time
 import requests
+import anthropic
 from dotenv import load_dotenv
 import os
 
 load_dotenv("/root/.env")
 
 HUBSPOT_KEY = os.getenv("HUBSPOT_API_KEY")
+ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 WEBHOOK_URL = "https://hook.us2.make.com/kg8xwq3y9biyfvex626484dti93g902h"
 SKIP_EMAILS = {"jane.doe.roofing.test2@example.com", "jane.doe.roofing.test@example.com", "test@test.com"}
+
+AGENT_SYSTEM_PROMPT = """You are the Blufire Email Outreach Agent. You write cold outreach emails for Steve Russell at Blufire Marketing.
+
+RULES:
+- NEVER use "Quick question" as a subject line. Ever.
+- NEVER sound like a template or mass email.
+- Write like a real person who actually looked at their business.
+- Be direct about what you do and why it matters to THEM specifically.
+- Reference something specific about their company, industry, or role.
+- Keep it under 100 words. Short paragraphs.
+- The ask: a 20-minute call this week.
+- No buzzwords, no hype, no "I'd love to", no "just reaching out", no "hope this finds you well".
+- Sound like a peer, not a salesperson.
+- Sign off as Steve Russell, Blufire Marketing.
+
+ABOUT BLUFIRE:
+Blufire Marketing helps contractors and local service businesses in the DFW area grow through:
+- Google Business Profile optimization and management
+- Local SEO that actually ranks
+- AI-powered lead generation and outreach automation
+- Website builds for contractors who need a real online presence
+
+Steve has real results: clients getting 3-5x more leads within 90 days.
+
+Return ONLY a JSON object with "subject" and "body" keys. The body should use <br> for line breaks. No markdown, no backticks, no explanation."""
 
 
 def get_new_leads():
@@ -29,7 +56,7 @@ def get_new_leads():
                     ]
                 }
             ],
-            "properties": ["firstname", "lastname", "email", "company", "jobtitle"],
+            "properties": ["firstname", "lastname", "email", "company", "jobtitle", "city", "state"],
             "limit": 100,
         },
         timeout=15,
@@ -48,41 +75,40 @@ def update_lead_status(contact_id):
     )
 
 
-def detect_business_type(company):
-    lower = company.lower()
-    if "roof" in lower:
-        return "roofing"
-    elif "fence" in lower or "fencing" in lower:
-        return "fencing"
-    elif "air" in lower or "heating" in lower or "hvac" in lower or "joplin" in lower:
-        return "HVAC"
-    elif "electric" in lower:
-        return "electrical"
-    return "contracting"
-
-
-def draft_email(contact):
+def draft_email_with_claude(contact):
+    """Use Claude to craft a unique, personalized email for this prospect."""
     p = contact["properties"]
-    firstname = p.get("firstname", "there")
-    company = p.get("company", "your company")
-    biz_type = detect_business_type(company)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
-    subject = f"Quick question for {company}"
-    body = (
-        f"Hi {firstname},<br><br>"
-        f"I came across {company} and wanted to reach out directly. "
-        f"We work with {biz_type} companies in the DFW area to help them "
-        f"get more leads through Google Business Profile optimization, "
-        f"SEO, and AI-powered outreach.<br><br>"
-        f"Would you be open to a quick 20-minute call this week? "
-        f"No pitch deck, no pressure — just a conversation to see if "
-        f"there's a fit.<br><br>"
-        f"Either way, I appreciate your time.<br><br>"
-        f"Steve Russell<br>"
-        f"Blufire Marketing<br>"
-        f"steve@blufiremarketing.com"
+    prospect_info = (
+        f"Name: {p.get('firstname', '')} {p.get('lastname', '')}\n"
+        f"Company: {p.get('company', '')}\n"
+        f"Title: {p.get('jobtitle', '')}\n"
+        f"City: {p.get('city', '')}\n"
+        f"State: {p.get('state', '')}"
     )
-    return subject, body
+
+    msg = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=400,
+        system=AGENT_SYSTEM_PROMPT,
+        messages=[
+            {
+                "role": "user",
+                "content": f"Write a cold outreach email to this prospect asking for a 20-minute meeting:\n\n{prospect_info}",
+            }
+        ],
+    )
+
+    raw = msg.content[0].text
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(raw[start:end])
+        raise ValueError(f"Claude returned invalid JSON: {raw[:200]}")
 
 
 def send_email(to, subject, body):
@@ -96,9 +122,10 @@ def send_email(to, subject, body):
 
 
 def main():
-    print("=" * 50)
-    print("  BLUFIRE OUTREACH — 20-Minute Meeting Request")
-    print("=" * 50)
+    print("=" * 60)
+    print("  BLUFIRE RUFLO OUTREACH AGENT")
+    print("  Each email crafted by Claude AI — no templates")
+    print("=" * 60)
 
     leads = get_new_leads()
     real_leads = [
@@ -117,22 +144,31 @@ def main():
         p = contact["properties"]
         email = p["email"]
         name = f"{p.get('firstname', '')} {p.get('lastname', '')}".strip()
+        company = p.get("company", "")
 
-        subject, body = draft_email(contact)
+        print(f"  Drafting for {name} ({company})...", end=" ", flush=True)
 
-        if send_email(email, subject, body):
-            update_lead_status(contact["id"])
-            print(f"  SENT: {name} <{email}>")
-            sent += 1
-        else:
-            print(f"  FAIL: {name} <{email}>")
+        try:
+            email_data = draft_email_with_claude(contact)
+            subject = email_data["subject"]
+            body = email_data["body"]
+
+            if send_email(email, subject, body):
+                update_lead_status(contact["id"])
+                print(f"SENT — \"{subject}\"")
+                sent += 1
+            else:
+                print("SEND FAILED")
+                failed += 1
+        except Exception as e:
+            print(f"ERROR: {e}")
             failed += 1
 
-        time.sleep(1)
+        time.sleep(2)  # Rate limit for API + webhook
 
-    print(f"\n{'=' * 50}")
+    print(f"\n{'=' * 60}")
     print(f"  DONE: {sent} sent, {failed} failed")
-    print(f"{'=' * 50}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
