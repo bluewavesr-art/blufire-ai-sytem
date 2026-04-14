@@ -1,0 +1,17 @@
+{
+  "sites": [
+    {
+      "id": "blufiremarketing.com-20260317232305",
+      "slug": "blufiremarketing.com",
+      "name": "Blufire Marketing",
+      "url": "https://blufiremarketing.com",
+      "tags": [
+        "agency",
+        "client"
+      ],
+      "added_at": "2026-03-17T23:23:05.308413+00:00Z",
+      "last_audit": "2026-03-17T23:23:05.498248+00:00Z",
+      "last_score": 41
+    }
+  ]
+}

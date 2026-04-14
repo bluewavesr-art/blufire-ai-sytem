@@ -12,6 +12,20 @@ projects/**/logs/
 projects/**/subagents/
 todos.json
 
+# Runtime / cache / session directories
+cache/
+debug/
+sessions/
+paste-cache/
+shell-snapshots/
+file-history/
+backups/
+plugins/
+tasks/
+todos/
+history.jsonl
+mcp-needs-auth-cache.json
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,27 @@
+{
+  "url": "https://blufiremarketing.com",
+  "timestamp": "2026-03-17T23:23:05.498248+00:00Z",
+  "score": 41,
+  "summary": {
+    "score": 41,
+    "categories": {
+      "technical": 38,
+      "content": 30,
+      "on_page": 35,
+      "schema": 62,
+      "performance": 45,
+      "ai_search": 40,
+      "images": 45
+    },
+    "critical_count": 5,
+    "high_count": 6,
+    "medium_count": 4,
+    "top_issues": [
+      "Fully JS-rendered \u2014 content invisible to crawlers",
+      "Duplicate title tags on all pages",
+      "No meta descriptions",
+      "No canonical tags",
+      "Placeholder data in live schema"
+    ]
+  }
+}
