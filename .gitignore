@@ -1,0 +1,17 @@
+# Credentials and secrets
+.credentials.json
+*.local.json
+settings.local.json
+*.env
+.env*
+
+# Claude internal session data — exclude all session/history files
+projects/**/*.jsonl
+projects/**/tool-results/
+projects/**/logs/
+projects/**/subagents/
+todos.json
+
+# OS
+.DS_Store
+Thumbs.db
