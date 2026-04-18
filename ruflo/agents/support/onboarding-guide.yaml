@@ -1,0 +1,22 @@
+name: onboarding-guide
+domain: support
+type: agent
+version: 1.0.0
+description: Guides new customers through onboarding process
+capabilities:
+- onboarding_flows
+- milestone_tracking
+- resource_delivery
+- success_metrics
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

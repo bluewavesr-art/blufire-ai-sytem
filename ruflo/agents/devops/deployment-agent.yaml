@@ -1,0 +1,22 @@
+name: deployment-agent
+domain: devops
+type: agent
+version: 1.0.0
+description: Manages deployments and release processes
+capabilities:
+- ci_cd
+- rollback
+- blue_green
+- canary_releases
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

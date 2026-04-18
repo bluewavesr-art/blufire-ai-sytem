@@ -1,0 +1,22 @@
+name: satisfaction-tracker
+domain: support
+type: agent
+version: 1.0.0
+description: Tracks customer satisfaction metrics and trends
+capabilities:
+- csat_measurement
+- trend_analysis
+- alert_triggers
+- improvement_suggestions
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

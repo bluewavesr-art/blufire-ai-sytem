@@ -1,0 +1,22 @@
+name: bug-triager
+domain: quality
+type: agent
+version: 1.0.0
+description: Triages and prioritizes bug reports
+capabilities:
+- severity_classification
+- assignment
+- duplicate_detection
+- impact_analysis
+model: claude-sonnet-4-20250514
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

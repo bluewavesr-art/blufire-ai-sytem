@@ -1,0 +1,52 @@
+# Ruflo v3.5 Configuration for Blufire AI System
+# Enterprise AI Agent Orchestration Platform
+
+platform:
+  name: "Blufire AI System"
+  version: "1.0.0"
+  ruflo_version: "3.5.0"
+  organization: "Bluewave Strategic Resources"
+
+environment:
+  node_min_version: "20.0.0"
+  runtime: "node"
+
+api_keys:
+  anthropic: "${ANTHROPIC_API_KEY}"
+  hubspot: "${HUBSPOT_API_KEY}"
+  apollo: "${APOLLO_API_KEY}"
+  gmail_user: "${GMAIL_USER}"
+  gmail_password: "${GMAIL_APP_PASSWORD}"
+
+ai_provider:
+  primary: "anthropic"
+  model: "claude-sonnet-4-20250514"
+  fallback_model: "claude-haiku-4-5-20251001"
+  max_tokens: 4096
+  temperature: 0.7
+
+swarm:
+  default_topology: "hierarchical"
+  max_concurrent_agents: 15
+  consensus_protocol: "weighted_voting"
+  queen_vote_weight: 3
+  fault_tolerance: "byzantine"
+  checkpoint_interval: 300
+
+memory:
+  backend: "local"
+  vector_dimensions: 1536
+  similarity_threshold: 0.85
+  max_patterns: 10000
+
+logging:
+  level: "info"
+  file: "logs/ruflo.log"
+  rotate: true
+  max_size: "50mb"
+
+deployment:
+  host: "143.198.139.48"
+  provider: "digitalocean"
+  auto_restart: true
+  health_check_interval: 60
