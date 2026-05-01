@@ -46,6 +46,7 @@ from blufire.runtime.tools.compliance import (
 from blufire.runtime.tools.llm import (
     AnalyzePipelineTool,
     DraftOutreachEmailTool,
+    DraftOutreachFromProspectTool,
     ScoreProspectTool,
 )
 from blufire.settings import Settings, get_settings
@@ -67,6 +68,13 @@ EMAIL_PROVIDERS: dict[str, str] = {
     # "sendgrid":    "blufire.runtime.tools.email_sendgrid",
     # "ses":         "blufire.runtime.tools.email_ses",
     # "ghl":         "blufire.runtime.tools.email_ghl",
+}
+
+EMAIL_DRAFT_PROVIDERS: dict[str, str] = {
+    "make_webhook": "blufire.runtime.tools.email_make_webhook",
+    # "gmail_api":   "blufire.runtime.tools.email_gmail_api",
+    # "outlook_api": "blufire.runtime.tools.email_outlook_api",
+    # "ghl":         "blufire.runtime.tools.email_ghl_draft",
 }
 
 PROSPECT_PROVIDERS: dict[str, str] = {
@@ -137,6 +145,33 @@ CRM_PIPELINE_BLUEPRINT = AgentBlueprint(
 )
 
 
+DAILY_LEADGEN_CAPABILITY = Capability(
+    name="daily_lead_gen.run",
+    tool_names=(
+        "prospect.search_people",
+        "crm.search_contacts",
+        "compliance.check_suppression",
+        "compliance.check_send_cap",
+        "crm.create_contact",
+        "llm.draft_outreach_email_from_prospect",
+        "compliance.build_footer",
+        "compliance.record_consent",
+        "email.create_draft",
+    ),
+    required=True,
+)
+
+DAILY_LEADGEN_BLUEPRINT = AgentBlueprint(
+    name="daily_lead_gen",
+    domain="leadgen",
+    description=(
+        "Daily compliance-gated outreach: search prospects → dedup against CRM → "
+        "skip suppressed / capped → draft for human review (no auto-send)."
+    ),
+    capabilities=(DAILY_LEADGEN_CAPABILITY,),
+)
+
+
 class ProviderNotImplemented(NotImplementedError):
     """Raised when a tenant's config requests a provider whose Tool
     implementation has not been written yet. The error names the offending
@@ -144,16 +179,21 @@ class ProviderNotImplemented(NotImplementedError):
 
 
 def _load_provider_register(
-    namespace: str, provider: str, table: dict[str, str]
+    config_key: str, table_name: str, provider: str, table: dict[str, str]
 ) -> Callable[[ToolRegistry], None]:
-    """Resolve ``settings.<namespace>.provider`` to its ``register(tools)``."""
+    """Resolve a provider name to its ``register(tools)`` function.
+
+    ``config_key`` is the dotted settings path the operator would edit
+    (``crm.provider``, ``email.draft_provider``, …). ``table_name`` is the
+    constant in this module they'd grep for (``CRM_PROVIDERS``,
+    ``EMAIL_DRAFT_PROVIDERS``, …)."""
     module_path = table.get(provider)
     if module_path is None:
         raise ProviderNotImplemented(
-            f"{namespace}.provider={provider!r} is declared in settings but no "
-            f"Tool implementation has been written. Add a module to "
+            f"{config_key}={provider!r} is declared in settings but no Tool "
+            f"implementation has been written. Add a module to "
             f"runtime/tools/, define a register(tools) function, and wire it "
-            f"into bootstrap.{namespace.upper()}_PROVIDERS."
+            f"into bootstrap.{table_name}."
         )
     module = importlib.import_module(module_path)
     register = getattr(module, "register", None)
@@ -193,18 +233,35 @@ def bootstrap(
         RecordConsentTool,
         BuildFooterTool,
         DraftOutreachEmailTool,
+        DraftOutreachFromProspectTool,
         ScoreProspectTool,
         AnalyzePipelineTool,
     ):
         _register_if_missing(tools, tool_cls())
 
     # Provider-dispatched tools: pick by tenant config.
-    _load_provider_register("crm", settings.crm.provider, CRM_PROVIDERS)(tools)
-    _load_provider_register("email", settings.email.provider, EMAIL_PROVIDERS)(tools)
-    _load_provider_register("prospect", settings.prospect.provider, PROSPECT_PROVIDERS)(tools)
+    _load_provider_register("crm.provider", "CRM_PROVIDERS", settings.crm.provider, CRM_PROVIDERS)(
+        tools
+    )
+    _load_provider_register(
+        "email.provider", "EMAIL_PROVIDERS", settings.email.provider, EMAIL_PROVIDERS
+    )(tools)
+    _load_provider_register(
+        "email.draft_provider",
+        "EMAIL_DRAFT_PROVIDERS",
+        settings.email.draft_provider,
+        EMAIL_DRAFT_PROVIDERS,
+    )(tools)
+    _load_provider_register(
+        "prospect.provider",
+        "PROSPECT_PROVIDERS",
+        settings.prospect.provider,
+        PROSPECT_PROVIDERS,
+    )(tools)
 
     capabilities.register(EMAIL_OUTREACH_CAPABILITY)
     capabilities.register(LEAD_GENERATION_CAPABILITY)
     capabilities.register(CRM_PIPELINE_CAPABILITY)
+    capabilities.register(DAILY_LEADGEN_CAPABILITY)
 
     return tools, capabilities
