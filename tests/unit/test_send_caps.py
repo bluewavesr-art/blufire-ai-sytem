@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+from datetime import time as dt_time
 from pathlib import Path
 
 from blufire.compliance.send_caps import SendCapStore
 from blufire.settings import OutreachConfig, SendWindow
 
+# Always-open window so cap tests don't fail outside business hours / on weekends.
+# The send-window logic itself is exercised separately in test_send_window_blocks.
+_ALWAYS_OPEN = SendWindow(
+    start=dt_time(0, 0),
+    end=dt_time(23, 59),
+    days=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+)
+
 
 def _store(tmp_path: Path, **overrides) -> SendCapStore:
-    cfg = OutreachConfig(**overrides) if overrides else OutreachConfig()
+    overrides.setdefault("send_window", _ALWAYS_OPEN)
+    cfg = OutreachConfig(**overrides)
     return SendCapStore(tmp_path / "send_log.sqlite", "tenant1", cfg)
 
 
@@ -33,8 +43,8 @@ def test_per_domain_cap(tmp_path: Path) -> None:
 
 
 def test_send_window_blocks(tmp_path: Path) -> None:
-    from datetime import time as dt_time
-
+    # Window of one minute on Monday only — overwhelmingly likely to be closed
+    # at test time. We only assert: IF it's closed, the reason is correct.
     window = SendWindow(start=dt_time(0, 0), end=dt_time(0, 1), days=["Mon"])
     store = _store(tmp_path, daily_send_cap=10, per_domain_daily_cap=10, send_window=window)
     decision = store.can_send("a@x.test", tz_name="UTC")
