@@ -91,18 +91,23 @@ install -d -o blufire -g blufire -m 0750 "$LOG_DIR"
 install -d -o root -g root -m 0755 "$INSTALL_PREFIX"
 
 # --- Sync source --------------------------------------------------------------
+# Always reach the install tree via git so we never leak the operator's local
+# .env / data/ / logs/ / .venv / __pycache__ into /opt/blufire/source.
 if [[ -d "$SOURCE_DIR/.git" ]]; then
     git -C "$SOURCE_DIR" fetch --tags --prune
     if [[ -n "$REF" ]]; then
         git -C "$SOURCE_DIR" checkout --quiet "$REF"
     fi
     git -C "$SOURCE_DIR" reset --hard HEAD
-else
+elif [[ -d "$REPO_ROOT/.git" ]]; then
     install -d -o root -g root -m 0755 "$SOURCE_DIR"
-    cp -a "$REPO_ROOT/." "$SOURCE_DIR/"
-    if [[ -n "$REF" && -d "$SOURCE_DIR/.git" ]]; then
+    git clone --quiet "$REPO_ROOT" "$SOURCE_DIR"
+    if [[ -n "$REF" ]]; then
         git -C "$SOURCE_DIR" checkout --quiet "$REF"
     fi
+else
+    echo "install.sh expects a git checkout at $REPO_ROOT (no .git found)." >&2
+    exit 2
 fi
 chown -R root:root "$SOURCE_DIR"
 
@@ -111,7 +116,7 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     python3 -m venv "$VENV_DIR"
 fi
 "$VENV_DIR/bin/pip" install --quiet --upgrade pip wheel
-"$VENV_DIR/bin/pip" install --quiet -e "$SOURCE_DIR[prod]"
+"$VENV_DIR/bin/pip" install --quiet -e "${SOURCE_DIR}[prod]"
 
 # --- Config + .env ------------------------------------------------------------
 if [[ -n "$CONFIG_FROM" ]]; then

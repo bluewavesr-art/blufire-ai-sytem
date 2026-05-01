@@ -6,6 +6,22 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Security (WS7 deployment hardening)
+- `install.sh` now uses `git clone` instead of `cp -a $REPO_ROOT/.` for the
+  initial source sync. Prevents the operator's working-tree artifacts (`.env`,
+  `data/`, `logs/`, `.venv/`, `__pycache__/`) from leaking into
+  `/opt/blufire/source` on first install.
+- `blufire-leadgen.service` adds: `UMask=0077`, `RestrictSUIDSGID=true`,
+  `RestrictRealtime=true`, `ProtectClock=true`, `ProtectHostname=true`,
+  `ProtectKernelLogs=true`, `ProtectProc=invisible`, `ProcSubset=pid`, and
+  explicit empty `CapabilityBoundingSet=` / `AmbientCapabilities=`.
+  `systemd-analyze security` reports overall exposure **2.8 / 10** (systemd
+  default is ~9.6).
+- `uninstall.sh` `rm -rf` paths now use `${VAR:?}` defense-in-depth in case
+  `$TENANT_ID` were ever unset (already validated, but cheap belt-and-braces).
+- Deferred to a future minor: `pip install --require-hashes` with a generated
+  lockfile, and `SystemCallFilter=@system-service` (needs runtime testing).
+
 ### Added (post-review hardening, in response to independent audit)
 - `Settings.tenant.timezone` validated against `zoneinfo.ZoneInfo` at config-load
   time; bad timezone names fail loudly instead of silently defaulting to UTC.

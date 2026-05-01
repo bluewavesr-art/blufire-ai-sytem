@@ -58,12 +58,14 @@ if [[ "$KEEP_CONFIG" -eq 0 ]]; then
 fi
 
 # --- Data ---------------------------------------------------------------------
+# Belt-and-suspenders: ${TENANT_ID:?} aborts the rm if TENANT_ID is somehow
+# empty, even though we validated above. Defense in depth on a destructive op.
 if [[ "$KEEP_DATA" -eq 0 ]]; then
     if confirm "DELETE $DATA_BASE/$TENANT_ID (suppression list, audit log)?"; then
-        rm -rf "$DATA_BASE/$TENANT_ID"
+        rm -rf "${DATA_BASE:?}/${TENANT_ID:?}"
     fi
     if confirm "DELETE $LOG_BASE/$TENANT_ID logs?"; then
-        rm -rf "$LOG_BASE/$TENANT_ID"
+        rm -rf "${LOG_BASE:?}/${TENANT_ID:?}"
     fi
 fi
 
