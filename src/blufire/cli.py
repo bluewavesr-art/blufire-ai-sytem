@@ -35,15 +35,28 @@ def _cmd_leadgen_run(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_outreach_run(args: argparse.Namespace, settings: Settings) -> int:
-    from blufire.agents import email_outreach
-
     ctx = _ctx("email_outreach", settings)
-    counters = email_outreach.run(
-        ctx,
-        campaign_context=args.campaign,
-        limit=args.limit,
-        dry_run=args.dry_run,
-    )
+    if args.via_capability:
+        from blufire.runtime.bootstrap import EMAIL_OUTREACH_BLUEPRINT, bootstrap
+        from blufire.runtime.orchestrators import email_outreach as orchestrator
+
+        bootstrap()
+        counters = orchestrator.run(
+            ctx,
+            EMAIL_OUTREACH_BLUEPRINT,
+            campaign_context=args.campaign,
+            limit=args.limit,
+            dry_run=args.dry_run,
+        )
+    else:
+        from blufire.agents import email_outreach
+
+        counters = email_outreach.run(
+            ctx,
+            campaign_context=args.campaign,
+            limit=args.limit,
+            dry_run=args.dry_run,
+        )
     ctx.log.info("outreach_done", **counters)
     return 0
 
@@ -137,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
     outreach_run.add_argument("--campaign", required=True, help="Campaign context for the LLM")
     outreach_run.add_argument("--limit", type=int, default=10)
     outreach_run.add_argument("--dry-run", action="store_true")
+    outreach_run.add_argument(
+        "--via-capability",
+        action="store_true",
+        help="Run through the Phase 2 ToolRegistry / Capability orchestrator "
+        "instead of the Phase 1 module path.",
+    )
     outreach_run.set_defaults(func=_cmd_outreach_run)
 
     pipeline = sub.add_parser("pipeline", help="CRM pipeline").add_subparsers(
