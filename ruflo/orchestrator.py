@@ -1,262 +1,204 @@
 #!/usr/bin/env python3
-"""Blufire Ruflo Orchestrator — Queens direct the swarm of agents."""
+"""Blufire Ruflo Orchestrator.
 
-import os
-import sys
-import json
-import time
-import yaml
-import logging
-from pathlib import Path
+Phase 1: routes tasks to YAML-defined agents through ``blufire.runtime``.
+Queens are loaded but their consensus/learning fields are NOT yet enforced;
+that's Phase 2 work. The 147 pre-generated agent YAMLs in ``ruflo/agents/`` are
+treated as scaffolding (capabilities log a warning if unresolved).
+"""
+
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FutureTimeout
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
-import anthropic
-from dotenv import load_dotenv
+import yaml
 
-load_dotenv("/root/.env")
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler("logs/ruflo.log", mode="a")],
-)
-log = logging.getLogger("ruflo")
+from blufire.logging_setup import configure, get_logger, new_run_id
+from blufire.runtime.agent_runner import run_agent
+from blufire.runtime.capability import AgentBlueprint, CapabilityRegistry
+from blufire.runtime.context import RunContext, TenantContext
+from blufire.runtime.tool import default_registry
+from blufire.settings import Settings, get_settings
 
 RUFLO_DIR = Path(__file__).parent
 AGENTS_DIR = RUFLO_DIR / "agents"
 QUEENS_DIR = RUFLO_DIR / "queens"
-CONFIG_PATH = RUFLO_DIR / "config" / "ruflo.yaml"
+SWARM_PATH = RUFLO_DIR / "swarms" / "blufire-swarm.yaml"
+RUFLO_CONFIG = RUFLO_DIR / "config" / "ruflo.yaml"
+
+DEFAULT_AGENT_TIMEOUT = 120.0
 
 
-class Agent:
-    """Represents a single Ruflo agent."""
-
-    def __init__(self, config_path):
-        with open(config_path) as f:
-            self.config = yaml.safe_load(f)
-        self.name = self.config["name"]
-        self.domain = self.config["domain"]
-        self.capabilities = self.config.get("capabilities", [])
-        self.status = "idle"
-        self.task_count = 0
-        self.error_count = 0
-
-    def execute(self, task, client):
-        """Execute a task using Claude AI."""
-        self.status = "busy"
-        try:
-            system_prompt = (
-                f"You are {self.name}, a specialized AI agent in the {self.domain} domain. "
-                f"Your capabilities: {', '.join(self.capabilities)}. "
-                f"Description: {self.config['description']}. "
-                f"Execute the following task precisely and return structured results."
-            )
-            response = client.messages.create(
-                model=self.config.get("model", "claude-sonnet-4-20250514"),
-                max_tokens=self.config.get("max_tokens", 4096),
-                system=system_prompt,
-                messages=[{"role": "user", "content": task}],
-            )
-            self.task_count += 1
-            self.status = "idle"
-            return {"agent": self.name, "status": "success", "result": response.content[0].text}
-        except Exception as e:
-            self.error_count += 1
-            self.status = "error"
-            log.error(f"Agent {self.name} failed: {e}")
-            return {"agent": self.name, "status": "error", "error": str(e)}
-
-    def health_check(self):
-        return {
-            "name": self.name,
-            "domain": self.domain,
-            "status": self.status,
-            "tasks_completed": self.task_count,
-            "errors": self.error_count,
-        }
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    return data if isinstance(data, dict) else {}
 
 
+@dataclass
 class Queen:
-    """Represents a Ruflo Queen that directs agents."""
+    name: str
+    role: str
+    domains: list[str] = field(default_factory=list)
 
-    def __init__(self, config_path):
-        with open(config_path) as f:
-            self.config = yaml.safe_load(f)
-        self.name = self.config["name"]
-        self.role = self.config["role"]
-        self.domains = self.config.get("domains", [])
-        self.vote_weight = self.config.get("vote_weight", 3)
-        self.agents = {}
+    @classmethod
+    def from_yaml(cls, path: Path) -> Queen:
+        data = _load_yaml(path)
+        return cls(
+            name=data.get("name", path.stem),
+            role=data.get("role", "queen"),
+            domains=list(data.get("domains", []) or []),
+        )
 
-    def assign_agent(self, agent):
-        if agent.domain in self.domains or not self.domains:
-            self.agents[agent.name] = agent
 
-    def select_agent(self, task_description, capabilities_needed):
-        """Select the best agent for a task based on capability match."""
-        best_match = None
-        best_score = 0
-        for agent in self.agents.values():
-            if agent.status != "idle":
-                continue
-            score = len(set(agent.capabilities) & set(capabilities_needed))
-            if score > best_score:
-                best_score = score
-                best_match = agent
-        return best_match
-
-    def delegate(self, task, capabilities, client):
-        """Delegate a task to the best-fit agent."""
-        agent = self.select_agent(task, capabilities)
-        if not agent:
-            log.warning(f"Queen {self.name}: No available agent for capabilities {capabilities}")
-            return {"status": "no_agent_available"}
-        log.info(f"Queen {self.name} delegating to {agent.name}: {task[:80]}...")
-        return agent.execute(task, client)
-
-    def status_report(self):
-        idle = sum(1 for a in self.agents.values() if a.status == "idle")
-        busy = sum(1 for a in self.agents.values() if a.status == "busy")
-        error = sum(1 for a in self.agents.values() if a.status == "error")
-        return {
-            "queen": self.name,
-            "role": self.role,
-            "total_agents": len(self.agents),
-            "idle": idle,
-            "busy": busy,
-            "error": error,
-        }
+@dataclass
+class LoadedAgent:
+    blueprint: AgentBlueprint
+    raw: dict[str, Any]
 
 
 class RufloOrchestrator:
-    """Main Ruflo orchestrator — manages queens and agent swarm."""
+    def __init__(self, settings: Settings | None = None) -> None:
+        self.settings = settings or get_settings()
+        self.config = _load_yaml(RUFLO_CONFIG)
+        self.capabilities = CapabilityRegistry(default_registry, strict=False)
+        self.queens: dict[str, Queen] = {}
+        self.agents: dict[str, LoadedAgent] = {}
+        self.domain_to_queen: dict[str, str] = {}
+        self._tenant = TenantContext(settings=self.settings)
+        self._log = get_logger("blufire.ruflo").bind(tenant_id=self.settings.tenant.id)
 
-    def __init__(self):
-        self.config = self._load_config()
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.queens = {}
-        self.agents = {}
         self._load_queens()
         self._load_agents()
-        self._assign_agents_to_queens()
-        log.info(f"Ruflo initialized: {len(self.queens)} queens, {len(self.agents)} agents")
+        self._load_swarm()
+        self._log.info(
+            "ruflo_initialized",
+            queens=len(self.queens),
+            agents=len(self.agents),
+            domains=len({a.blueprint.domain for a in self.agents.values()}),
+        )
 
-    def _load_config(self):
-        with open(CONFIG_PATH) as f:
-            return yaml.safe_load(f)
-
-    def _load_queens(self):
-        for queen_file in QUEENS_DIR.glob("*.yaml"):
-            queen = Queen(queen_file)
+    def _load_queens(self) -> None:
+        if not QUEENS_DIR.is_dir():
+            return
+        for path in sorted(QUEENS_DIR.glob("*.yaml")):
+            queen = Queen.from_yaml(path)
             self.queens[queen.name] = queen
-            log.info(f"Loaded queen: {queen.name} ({queen.role})")
 
-    def _load_agents(self):
-        for domain_dir in AGENTS_DIR.iterdir():
+    def _load_agents(self) -> None:
+        if not AGENTS_DIR.is_dir():
+            return
+        for domain_dir in sorted(AGENTS_DIR.iterdir()):
             if not domain_dir.is_dir() or domain_dir.name.startswith("_"):
                 continue
-            for agent_file in domain_dir.glob("*.yaml"):
-                agent = Agent(agent_file)
-                self.agents[agent.name] = agent
+            for path in sorted(domain_dir.glob("*.yaml")):
+                raw = _load_yaml(path)
+                if not raw:
+                    continue
+                blueprint = self.capabilities.resolve(raw)
+                self.agents[blueprint.name] = LoadedAgent(blueprint=blueprint, raw=raw)
 
-    def _assign_agents_to_queens(self):
-        domain_queen_map = {}
-        swarm_path = RUFLO_DIR / "swarms" / "blufire-swarm.yaml"
-        if swarm_path.exists():
-            with open(swarm_path) as f:
-                swarm = yaml.safe_load(f)
-            for domain, cfg in swarm.get("domains", {}).items():
-                domain_queen_map[domain] = cfg.get("queen")
+    def _load_swarm(self) -> None:
+        swarm = _load_yaml(SWARM_PATH)
+        for domain, cfg in (swarm.get("domains") or {}).items():
+            queen_name = (cfg or {}).get("queen")
+            if queen_name:
+                self.domain_to_queen[domain] = queen_name
 
-        for agent in self.agents.values():
-            queen_name = domain_queen_map.get(agent.domain)
-            if queen_name and queen_name in self.queens:
-                self.queens[queen_name].assign_agent(agent)
-            else:
-                # Default to tactical queen
-                if "tactical-queen" in self.queens:
-                    self.queens["tactical-queen"].assign_agent(agent)
-
-    def route_task(self, task, domain=None, capabilities=None):
-        """Route a task to the appropriate queen and agent."""
-        capabilities = capabilities or []
-
-        # Find the right queen for the domain
+    def _select_agent(self, domain: str | None, capabilities: list[str]) -> AgentBlueprint | None:
+        candidates = list(self.agents.values())
         if domain:
-            for queen in self.queens.values():
-                if domain in queen.domains:
-                    return queen.delegate(task, capabilities, self.client)
+            candidates = [a for a in candidates if a.blueprint.domain == domain] or candidates
+        if not candidates:
+            return None
+        if not capabilities:
+            return candidates[0].blueprint
+        wanted = set(capabilities)
+        scored = [
+            (sum(1 for c in a.blueprint.capabilities if c.name in wanted), a.blueprint)
+            for a in candidates
+        ]
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        return scored[0][1] if scored else None
 
-        # Use strategic queen as default
-        queen = self.queens.get("strategic-queen") or list(self.queens.values())[0]
-        return queen.delegate(task, capabilities, self.client)
+    def route_task(
+        self,
+        task: str,
+        *,
+        domain: str | None = None,
+        capabilities: list[str] | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        capabilities = capabilities or []
+        blueprint = self._select_agent(domain, capabilities)
+        if blueprint is None:
+            return {"status": "no_agent", "domain": domain}
+        ctx = RunContext(
+            tenant=self._tenant,
+            agent=blueprint.name,
+            run_id=run_id or new_run_id(),
+        )
+        try:
+            return run_agent(ctx, blueprint, task)
+        except Exception as exc:
+            ctx.log.exception("agent_run_failed", error_class=type(exc).__name__)
+            return {"status": "error", "agent": blueprint.name, "error": str(exc)}
 
-    def run_parallel(self, tasks, max_workers=5):
-        """Run multiple tasks in parallel across the swarm."""
-        results = []
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {}
-            for task in tasks:
-                future = executor.submit(
+    def run_parallel(
+        self,
+        tasks: list[dict[str, Any]],
+        *,
+        max_workers: int = 5,
+        timeout: float = DEFAULT_AGENT_TIMEOUT,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            future_to_task = {
+                pool.submit(
                     self.route_task,
                     task["description"],
-                    task.get("domain"),
-                    task.get("capabilities", []),
-                )
-                futures[future] = task
-
-            for future in as_completed(futures):
-                task = futures[future]
+                    domain=task.get("domain"),
+                    capabilities=task.get("capabilities"),
+                ): task
+                for task in tasks
+            }
+            for future in as_completed(future_to_task, timeout=timeout):
+                task = future_to_task[future]
                 try:
-                    result = future.result()
-                    results.append({"task": task, "result": result})
-                except Exception as e:
-                    results.append({"task": task, "result": {"status": "error", "error": str(e)}})
-
+                    results.append({"task": task, "result": future.result(timeout=timeout)})
+                except FutureTimeout:
+                    results.append({"task": task, "result": {"status": "timeout"}})
+                except Exception as exc:
+                    results.append({"task": task, "result": {"status": "error", "error": str(exc)}})
         return results
 
-    def status(self):
-        """Get full system status."""
+    def status(self) -> dict[str, Any]:
+        domains: dict[str, int] = {}
+        for agent in self.agents.values():
+            domains[agent.blueprint.domain] = domains.get(agent.blueprint.domain, 0) + 1
         return {
-            "platform": self.config.get("platform", {}).get("name"),
-            "queens": [q.status_report() for q in self.queens.values()],
+            "platform": (self.config.get("platform") or {}).get("name"),
+            "queens": [
+                {"name": q.name, "role": q.role, "domains": q.domains} for q in self.queens.values()
+            ],
             "total_agents": len(self.agents),
-            "agents_by_domain": self._agents_by_domain(),
+            "agents_by_domain": domains,
         }
 
-    def _agents_by_domain(self):
-        domains = {}
-        for agent in self.agents.values():
-            domains.setdefault(agent.domain, 0)
-            domains[agent.domain] += 1
-        return domains
 
-
-def main():
-    os.makedirs("logs", exist_ok=True)
-
-    print("=" * 60)
-    print("  BLUFIRE AI SYSTEM — Ruflo Agent Orchestrator")
-    print("=" * 60)
-
-    orchestrator = RufloOrchestrator()
+def main() -> None:
+    settings = get_settings()
+    configure(settings)
+    orchestrator = RufloOrchestrator(settings)
     status = orchestrator.status()
-
-    print(f"\nPlatform: {status['platform']}")
-    print(f"Total Agents: {status['total_agents']}")
-    print(f"\nQueens:")
-    for q in status["queens"]:
-        print(f"  {q['queen']} ({q['role']}): {q['total_agents']} agents")
-    print(f"\nAgents by Domain:")
-    for domain, count in sorted(status["agents_by_domain"].items()):
-        print(f"  {domain}: {count}")
-
-    print("\n" + "=" * 60)
-    print("  System ready. Use orchestrator.route_task() to dispatch work.")
-    print("=" * 60)
-
-    return orchestrator
+    log = get_logger("blufire.ruflo").bind(tenant_id=settings.tenant.id)
+    log.info("ruflo_ready", **status)
 
 
 if __name__ == "__main__":

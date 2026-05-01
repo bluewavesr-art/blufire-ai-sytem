@@ -7,6 +7,27 @@
 node_modules/
 __pycache__/
 *.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Runtime artefacts
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE
 .vscode/

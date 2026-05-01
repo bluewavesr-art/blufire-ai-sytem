@@ -8,7 +8,6 @@ capabilities:
 - threat_classification
 - alert_generation
 - pattern_matching
-model: claude-sonnet-4-20250514
 max_tokens: 4096
 temperature: 0.7
 execution:

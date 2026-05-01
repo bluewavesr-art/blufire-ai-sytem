@@ -8,7 +8,6 @@ capabilities:
 - channel_management
 - bot_commands
 - webhooks
-model: claude-sonnet-4-20250514
 max_tokens: 4096
 temperature: 0.7
 execution:
