@@ -98,6 +98,29 @@ class WebhookConfig(BaseModel):
     gmail_draft_url: HttpUrl | None = None
 
 
+# Supported provider identifiers. Adding a new CRM/email backend means:
+#   1. Implementing the matching Tool classes under runtime/tools/<provider>.py
+#      with a module-level ``register(tools)`` function.
+#   2. Adding the new identifier to ``CRM_PROVIDERS`` / ``EMAIL_PROVIDERS``
+#      in runtime/bootstrap.py.
+#   3. Adding the literal here so configs validate at parse time.
+#
+# Note: GHL (GoHighLevel) is both a CRM AND an email/SMS sender, so a GHL
+# tenant typically sets ``crm.provider=ghl`` AND ``email.provider=ghl``.
+# The provider modules are independent — register() is called for whichever
+# is configured.
+CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl"]
+EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
+
+
+class CrmConfig(BaseModel):
+    provider: CrmProvider = "hubspot"
+
+
+class EmailConfig(BaseModel):
+    provider: EmailProvider = "gmail"
+
+
 class OutreachConfig(BaseModel):
     daily_send_cap: int = Field(default=50, ge=0, le=500)
     per_domain_daily_cap: int = Field(default=5, ge=0, le=100)
@@ -145,6 +168,8 @@ class Settings(BaseModel):
     sender: SenderConfig
     models: ModelsConfig = ModelsConfig()
     prospect_searches: list[ProspectSearch] = Field(default_factory=list)
+    crm: CrmConfig = CrmConfig()
+    email: EmailConfig = EmailConfig()
     outreach: OutreachConfig = OutreachConfig()
     compliance: ComplianceConfig = ComplianceConfig()
     logging: LoggingConfig = LoggingConfig()

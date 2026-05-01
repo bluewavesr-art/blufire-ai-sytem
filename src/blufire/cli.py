@@ -40,7 +40,7 @@ def _cmd_outreach_run(args: argparse.Namespace, settings: Settings) -> int:
         from blufire.runtime.bootstrap import EMAIL_OUTREACH_BLUEPRINT, bootstrap
         from blufire.runtime.orchestrators import email_outreach as orchestrator
 
-        bootstrap()
+        bootstrap(settings)
         counters = orchestrator.run(
             ctx,
             EMAIL_OUTREACH_BLUEPRINT,

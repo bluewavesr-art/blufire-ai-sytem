@@ -4,6 +4,41 @@ All notable changes to Blufire are tracked here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added (Phase 2 step 1: capability-driven runtime)
+- `runtime/tools/` — nine concrete `Tool` implementations with pydantic
+  input/output schemas (compliance × 5, crm × 2, email × 1, llm × 1).
+- `runtime/bootstrap.py` — idempotent `bootstrap(settings)` that registers
+  every built-in tool plus the `email_outreach.send` capability.
+- `runtime/orchestrators/email_outreach.py` — capability-driven runner that
+  mirrors the Phase 1 logic but routes every external call through the
+  registry. Compliance gating stays in deterministic Python.
+- `cli` — `blufire outreach run --via-capability` exercises the new path.
+
+### Added (Phase 2 step 1.5: pluggable CRM / email backends)
+- `settings.crm.provider` (default `"hubspot"`) and `settings.email.provider`
+  (default `"gmail"`). Validated against a Literal of known providers
+  (`hubspot, jobber, acculynx, servicetitan, ghl` and
+  `gmail, mailgun, sendgrid, ses, ghl`). Unrecognized providers are rejected
+  at config-parse time.
+- Tool *contracts* (`crm.list_contacts`, `crm.log_email`, `email.send_smtp`)
+  live in `runtime/tools/{crm,email}.py` as pydantic schemas. Concrete
+  *implementations* live in sibling modules (`crm_hubspot.py`, `email_gmail.py`).
+  Each provider module exposes a `register(tools)` function.
+- `bootstrap.py` dispatches on `settings.{crm,email}.provider` via a flat
+  table (`CRM_PROVIDERS`, `EMAIL_PROVIDERS`). Adding a new provider =
+  one new module + one line in the dispatch table.
+- Adding GHL (or any other future provider) to settings now produces a
+  clear `ProviderNotImplemented` error pointing at the missing module
+  rather than a runtime AttributeError.
+
+### Fixed
+- `tests/unit/test_send_caps.py` — daily-cap and per-domain-cap tests no
+  longer fail outside business hours / on weekends. The default 08:00–17:00
+  Mon–Fri send window was leaking into cap tests; now those tests use an
+  always-open window and the dedicated send-window test stays.
+
 ## [1.0.0] - 2026-05-01
 
 ### Security (WS7 deployment hardening)

@@ -14,8 +14,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from blufire.runtime.bootstrap import (
+    CRM_PROVIDERS,
     EMAIL_OUTREACH_BLUEPRINT,
     EMAIL_OUTREACH_CAPABILITY,
+    EMAIL_PROVIDERS,
+    ProviderNotImplemented,
     bootstrap,
 )
 from blufire.runtime.capability import CapabilityRegistry, CapabilityUnresolved
@@ -53,26 +56,26 @@ EXPECTED_TOOLS = sorted(
 # ---------------------------------------------------------------------------
 
 
-def test_bootstrap_registers_expected_tools() -> None:
+def test_bootstrap_registers_expected_tools(tmp_settings: Any) -> None:
     tools = ToolRegistry()
     caps = CapabilityRegistry(tools)
-    bootstrap(tools, caps)
+    bootstrap(tmp_settings, tools, caps)
     assert tools.names() == EXPECTED_TOOLS
 
 
-def test_bootstrap_is_idempotent() -> None:
+def test_bootstrap_is_idempotent(tmp_settings: Any) -> None:
     tools = ToolRegistry()
     caps = CapabilityRegistry(tools)
-    bootstrap(tools, caps)
+    bootstrap(tmp_settings, tools, caps)
     # Second call must not raise (existing tools are skipped, capability
     # registration is idempotent because Capability is keyed by name).
-    bootstrap(tools, caps)
+    bootstrap(tmp_settings, tools, caps)
     assert tools.names() == EXPECTED_TOOLS
 
 
-def test_every_tool_satisfies_protocol() -> None:
+def test_every_tool_satisfies_protocol(tmp_settings: Any) -> None:
     tools = ToolRegistry()
-    bootstrap(tools, CapabilityRegistry(tools))
+    bootstrap(tmp_settings, tools, CapabilityRegistry(tools))
     for name in tools.names():
         tool = tools.get(name)
         assert tool is not None
@@ -82,10 +85,10 @@ def test_every_tool_satisfies_protocol() -> None:
         assert hasattr(tool, "output_schema")
 
 
-def test_capability_resolves_against_populated_registry() -> None:
+def test_capability_resolves_against_populated_registry(tmp_settings: Any) -> None:
     tools = ToolRegistry()
     caps = CapabilityRegistry(tools, strict=True)
-    bootstrap(tools, caps)
+    bootstrap(tmp_settings, tools, caps)
     blueprint = caps.resolve(
         {
             "name": "email_outreach",
@@ -107,6 +110,57 @@ def test_capability_resolution_strict_raises_when_tool_missing() -> None:
     caps.register(EMAIL_OUTREACH_CAPABILITY)
     with pytest.raises(CapabilityUnresolved):
         caps.resolve({"name": "email_outreach", "capabilities": ["email_outreach.send"]})
+
+
+# ---------------------------------------------------------------------------
+# Provider dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_hubspot_is_default_crm_provider(tmp_settings: Any) -> None:
+    """Default settings → HubSpot tools registered under the generic names."""
+    assert tmp_settings.crm.provider == "hubspot"
+    tools = ToolRegistry()
+    bootstrap(tmp_settings, tools, CapabilityRegistry(tools))
+    crm_tool = tools.get("crm.list_contacts")
+    assert crm_tool is not None
+    assert type(crm_tool).__name__ == "HubSpotListContactsTool"
+
+
+def test_gmail_is_default_email_provider(tmp_settings: Any) -> None:
+    assert tmp_settings.email.provider == "gmail"
+    tools = ToolRegistry()
+    bootstrap(tmp_settings, tools, CapabilityRegistry(tools))
+    email_tool = tools.get("email.send_smtp")
+    assert email_tool is not None
+    assert type(email_tool).__name__ == "GmailSendEmailTool"
+
+
+def test_unimplemented_crm_provider_raises_clear_error(tmp_settings: Any) -> None:
+    """A provider declared in the Literal but not yet implemented must
+    raise ProviderNotImplemented with a message that names the config key."""
+    # Bypass the Literal validator by directly mutating the config object.
+    tmp_settings.crm.provider = "jobber"  # type: ignore[assignment]
+    tools = ToolRegistry()
+    with pytest.raises(ProviderNotImplemented, match="crm.provider='jobber'"):
+        bootstrap(tmp_settings, tools, CapabilityRegistry(tools))
+
+
+def test_unimplemented_email_provider_raises_clear_error(tmp_settings: Any) -> None:
+    tmp_settings.email.provider = "mailgun"  # type: ignore[assignment]
+    tools = ToolRegistry()
+    with pytest.raises(ProviderNotImplemented, match="email.provider='mailgun'"):
+        bootstrap(tmp_settings, tools, CapabilityRegistry(tools))
+
+
+def test_provider_dispatch_tables_are_consistent() -> None:
+    """Every key in the dispatch tables must be a string and resolve to a
+    real importable module path (we don't import them here — we just sanity-
+    check the shape so a typo lands fast)."""
+    for table in (CRM_PROVIDERS, EMAIL_PROVIDERS):
+        for provider, module_path in table.items():
+            assert isinstance(provider, str) and provider
+            assert isinstance(module_path, str) and module_path.startswith("blufire.runtime.tools.")
 
 
 # ---------------------------------------------------------------------------

@@ -1,14 +1,20 @@
-"""CRM Tools backed by HubSpot."""
+"""CRM tool *contracts* — pydantic schemas every CRM backend must satisfy.
+
+Implementations live in sibling modules (``crm_hubspot.py``,
+``crm_jobber.py``, ``crm_acculynx.py``, ``crm_servicetitan.py``, …) and
+are wired into the registry by ``runtime/bootstrap.py`` based on
+``settings.crm.provider``.
+
+The orchestrator never imports a CRM-specific implementation. It calls
+``registry.get("crm.list_contacts")`` and the configured provider is
+returned. Adding a new CRM = one new module + one line in bootstrap.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from pydantic import BaseModel, Field
-
-from blufire.integrations.hubspot import HubSpotClient, HubSpotError
-from blufire.runtime.context import RunContext
-from blufire.runtime.tools._base import BaseTool
 
 DEFAULT_CONTACT_PROPERTIES = ["firstname", "lastname", "email", "company", "jobtitle"]
 
@@ -24,30 +30,16 @@ class ListContactsInput(BaseModel):
 
 
 class ContactRecord(BaseModel):
+    """Provider-agnostic contact shape. Implementations map their native
+    record (HubSpot Contact, Jobber Client, AccuLynx Customer, ServiceTitan
+    Customer, …) into this shape."""
+
     id: str
     properties: dict[str, Any] = Field(default_factory=dict)
 
 
 class ListContactsOutput(BaseModel):
     contacts: list[ContactRecord] = Field(default_factory=list)
-
-
-class ListContactsTool(BaseTool[ListContactsInput, ListContactsOutput]):
-    name = "crm.list_contacts"
-    description = "Page through HubSpot contacts up to the supplied limit."
-    input_schema = ListContactsInput
-    output_schema = ListContactsOutput
-
-    def invoke(self, ctx: RunContext, payload: ListContactsInput) -> ListContactsOutput:
-        client = HubSpotClient(ctx.tenant.settings)
-        records: list[ContactRecord] = []
-        for i, raw in enumerate(client.iter_objects("contacts", payload.properties)):
-            if i >= payload.limit:
-                break
-            records.append(
-                ContactRecord(id=str(raw.get("id", "")), properties=raw.get("properties") or {})
-            )
-        return ListContactsOutput(contacts=records)
 
 
 # ---------------------------------------------------------------------------
@@ -62,21 +54,10 @@ class LogEmailInput(BaseModel):
 
 
 class LogEmailOutput(BaseModel):
+    """``logged=False`` is a soft failure: either the CRM doesn't support
+    logging (some field-service CRMs are read-mostly) or the call timed out.
+    The orchestrator logs a warning and continues — it never fails the
+    overall send because of a logging miss."""
+
     logged: bool
     error: str | None = None
-
-
-class LogEmailTool(BaseTool[LogEmailInput, LogEmailOutput]):
-    name = "crm.log_email"
-    description = "Log a sent email as a HubSpot engagement (best-effort)."
-    input_schema = LogEmailInput
-    output_schema = LogEmailOutput
-
-    def invoke(self, ctx: RunContext, payload: LogEmailInput) -> LogEmailOutput:
-        client = HubSpotClient(ctx.tenant.settings)
-        try:
-            client.log_email(payload.contact_id, payload.subject, payload.body)
-        except HubSpotError as exc:
-            # Don't fail the whole run if HubSpot times out — caller decides.
-            return LogEmailOutput(logged=False, error=type(exc).__name__)
-        return LogEmailOutput(logged=True)

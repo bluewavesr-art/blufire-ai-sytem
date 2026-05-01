@@ -1,12 +1,11 @@
-"""Email-delivery Tools."""
+"""Email-delivery tool *contracts*. Implementations live in sibling modules
+(``email_gmail.py``, ``email_mailgun.py``, ``email_sendgrid.py``,
+``email_ses.py``, …) and are wired into the registry by
+``runtime/bootstrap.py`` based on ``settings.email.provider``."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel
-
-from blufire.integrations.smtp import EmailHeaders, SmtpSender
-from blufire.runtime.context import RunContext
-from blufire.runtime.tools._base import BaseTool
 
 
 class SendEmailInput(BaseModel):
@@ -18,20 +17,3 @@ class SendEmailInput(BaseModel):
 
 class SendEmailOutput(BaseModel):
     sent: bool = True
-
-
-class SendEmailTool(BaseTool[SendEmailInput, SendEmailOutput]):
-    name = "email.send_smtp"
-    description = "Send an email via the tenant's configured SMTP relay."
-    input_schema = SendEmailInput
-    output_schema = SendEmailOutput
-
-    def invoke(self, ctx: RunContext, payload: SendEmailInput) -> SendEmailOutput:
-        sender = SmtpSender(ctx.tenant.settings)
-        sender.send(
-            to=payload.to,
-            subject=payload.subject,
-            body=payload.body,
-            headers=EmailHeaders(list_unsubscribe=payload.list_unsubscribe),
-        )
-        return SendEmailOutput()
