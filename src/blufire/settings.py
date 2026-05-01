@@ -88,6 +88,20 @@ class ProspectSearch(BaseModel):
     per_page: int = Field(default=10, ge=1, le=100)
 
 
+class GSheetsConfig(BaseModel):
+    """Sheet-as-CRM configuration. Used when ``crm.provider == "gsheets"``
+    and/or ``email.draft_provider == "gsheets"``.
+
+    The ``leads_*`` worksheet is the source-of-truth for contacts (dedup
+    via ``crm.search_contacts``, append via ``crm.create_contact``). The
+    ``drafts_*`` worksheet is where ``email.create_draft`` appends new
+    drafts for human review."""
+
+    spreadsheet_url: HttpUrl | None = None
+    leads_worksheet: str = "Leads"
+    drafts_worksheet: str = "Drafts"
+
+
 class SendWindow(BaseModel):
     start: time = time(8, 0)
     end: time = time(17, 0)
@@ -109,9 +123,9 @@ class WebhookConfig(BaseModel):
 # tenant typically sets ``crm.provider=ghl`` AND ``email.provider=ghl``.
 # The provider modules are independent — register() is called for whichever
 # is configured.
-CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl"]
+CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl", "gsheets"]
 EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
-EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl"]
+EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl", "gsheets"]
 ProspectProvider = Literal["apollo", "zoominfo", "lusha"]
 
 
@@ -176,6 +190,7 @@ class _Secrets(BaseSettings):
     unsubscribe_base_url: HttpUrl | None = None
     blufire_license_key: SecretStr | None = None
     sentry_dsn: str | None = None
+    gsheets_credentials_path: Path | None = None
 
 
 class Settings(BaseModel):
@@ -187,6 +202,7 @@ class Settings(BaseModel):
     crm: CrmConfig = CrmConfig()
     email: EmailConfig = EmailConfig()
     prospect: ProspectConfig = ProspectConfig()
+    gsheets: GSheetsConfig = GSheetsConfig()
     outreach: OutreachConfig = OutreachConfig()
     compliance: ComplianceConfig = ComplianceConfig()
     logging: LoggingConfig = LoggingConfig()

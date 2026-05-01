@@ -1,0 +1,114 @@
+# Blufire tenant config for Backyard Builders (Fort Worth, TX).
+#
+# Storm-damage fencing campaign targeting B2B property managers,
+# facilities directors, and HOA administrators in the DFW metro.
+#
+# Daily flow:
+#   06:00 CST cron → Apollo search → enrich → de-dup against the
+#   "Leads" worksheet → write new leads to "Leads" → draft emails →
+#   append to "Drafts" worksheet for Backyard to copy/send manually.
+#
+# No SMTP send, no Make.com webhook. Single Google Sheet, two worksheets.
+#
+# Replace <<PLACEHOLDER>> values, then install:
+#   sudo BLUFIRE_TENANT_ID=backyard-builders bash install.sh \
+#     --config-from packaging/tenants/backyard-builders.yaml.example \
+#     --env-from packaging/tenants/backyard-builders.env.example
+
+tenant:
+  id: "backyard-builders"
+  display_name: "Backyard Builders"
+  timezone: "America/Chicago"
+
+paths:
+  data_dir: "/var/lib/blufire/backyard-builders"
+  log_dir: "/var/log/blufire/backyard-builders"
+
+sender:
+  name: "<<SENDER_NAME — e.g. Mike at Backyard Builders>>"
+  company: "Backyard Builders"
+  email: "<<SENDER_EMAIL — e.g. mike@backyardbuildersdfw.com>>"
+  reply_to: null
+  physical_address: "<<FULL_MAILING_ADDRESS — required for CAN-SPAM>>"
+
+# Sheets-as-CRM: dedup + new contacts go into the "Leads" worksheet,
+# generated drafts go into the "Drafts" worksheet of the same spreadsheet.
+crm:
+  provider: "gsheets"
+
+email:
+  provider: "gmail"           # not used (we never SMTP-send for this tenant)
+  draft_provider: "gsheets"
+
+prospect:
+  provider: "apollo"
+
+gsheets:
+  spreadsheet_url: "<<GOOGLE_SHEET_URL>>"
+  leads_worksheet: "Leads"
+  drafts_worksheet: "Drafts"
+
+# Apollo search criteria for the storm-damage fencing campaign. Two
+# searches so we get a mix of property-management and facilities
+# decision-makers. Keep per_page small — we only want ~10 prospects/day,
+# the orchestrator will dedup heavily.
+prospect_searches:
+  - name: "DFW property managers (storm fencing)"
+    person_titles:
+      - "Property Manager"
+      - "Regional Property Manager"
+      - "Facilities Manager"
+      - "Director of Operations"
+    locations:
+      - "Fort Worth, Texas, United States"
+      - "Dallas, Texas, United States"
+      - "Arlington, Texas, United States"
+      - "Plano, Texas, United States"
+    industries:
+      - "Real Estate"
+      - "Commercial Real Estate"
+      - "Property Management"
+    per_page: 10
+
+  - name: "DFW HOAs / multi-family (storm fencing)"
+    person_titles:
+      - "HOA President"
+      - "Community Manager"
+      - "Director of Maintenance"
+    locations:
+      - "Fort Worth, Texas, United States"
+      - "Dallas, Texas, United States"
+    industries:
+      - "Property Management"
+      - "Real Estate"
+    per_page: 5
+
+outreach:
+  daily_send_cap: 10
+  per_domain_daily_cap: 1
+  send_window:
+    start: "08:00:00"
+    end: "17:00:00"
+    days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+  system_prompt_path: "/etc/blufire/backyard-builders.system-prompt.txt"
+  webhook:
+    gmail_draft_url: null     # not used; draft_provider is gsheets
+
+compliance:
+  unsubscribe_base_url: "<<https://unsub.your-domain.com — optional but recommended>>"
+  legal_basis: "legitimate_interest"   # B2B cold outreach to property managers
+  jurisdiction: ["US"]
+  exclude_eea: true
+  run_unsubscribe_server: false
+
+logging:
+  level: "INFO"
+  format: "json"
+  file: "/var/log/blufire/backyard-builders/blufire.log"
+  rotate_max_bytes: 52428800
+  rotate_backup_count: 10
+
+models:
+  default: "claude-sonnet-4-20250514"
+  drafting: "claude-sonnet-4-20250514"
+  scoring: "claude-haiku-4-5-20251001"

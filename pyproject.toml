@@ -32,6 +32,10 @@ unsubscribe-server = [
     "starlette==0.41.2",
     "uvicorn==0.32.0",
 ]
+gsheets = [
+    "gspread==6.1.4",
+    "google-auth==2.36.0",
+]
 dev = [
     "pytest==8.3.3",
     "pytest-cov==5.0.0",

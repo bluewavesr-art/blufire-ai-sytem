@@ -6,6 +6,34 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Backyard Builders launch: Google Sheets as CRM)
+- New optional `[gsheets]` extra (`gspread==6.1.4`, `google-auth==2.36.0`).
+- `integrations/gsheets.py` — service-account-authenticated client wrapper
+  with tenacity retry on Google API errors. Read-only Drive scope + read/
+  write Sheets scope.
+- `runtime/tools/crm_gsheets.py` — Sheets-as-CRM provider. `crm.search_contacts`
+  / `crm.create_contact` / `crm.list_contacts` operate on the configured
+  `Leads` worksheet. Operations that don't apply to a flat sheet (deals,
+  tasks, email logs) return soft "not_supported_by_provider" responses so
+  orchestrators degrade gracefully on sheets-only tenants.
+- `runtime/tools/email_gsheets.py` — Sheets-as-draft-sink provider. The
+  `email.create_draft` contract appends a row to the configured `Drafts`
+  worksheet. The operator copy-pastes the subject/body into Gmail and
+  updates the `status` column manually.
+- New `settings.gsheets` section (spreadsheet_url, leads_worksheet,
+  drafts_worksheet) and `secrets.gsheets_credentials_path` for the
+  service-account JSON path.
+- `gsheets` added to `CrmProvider` and `EmailDraftProvider` literals; wired
+  into `CRM_PROVIDERS` and `EMAIL_DRAFT_PROVIDERS` dispatch tables.
+- `packaging/tenants/backyard-builders.{yaml,env,system-prompt}.example` —
+  full tenant config template for the storm-damage fencing campaign
+  targeting DFW property managers + HOAs (~10 prospects/day, M-F 06:00 CST).
+- `packaging/systemd/blufire-leadgen-backyard.timer.example` — CST timer
+  override.
+- `packaging/tenants/backyard-builders.README.md` — step-by-step deployment
+  guide including GCP service-account setup, sheet sharing, and operator
+  daily workflow.
+
 ### Added (Phase 2 step 3: daily_lead_gen orchestrator + email.create_draft contract)
 - New tool contract `email.create_draft` (separate from `email.send_smtp`):
   creates a draft for human review rather than sending immediately. First

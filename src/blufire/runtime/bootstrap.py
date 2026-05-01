@@ -56,6 +56,7 @@ from blufire.settings import Settings, get_settings
 # that selects that provider.
 CRM_PROVIDERS: dict[str, str] = {
     "hubspot": "blufire.runtime.tools.crm_hubspot",
+    "gsheets": "blufire.runtime.tools.crm_gsheets",
     # "jobber":      "blufire.runtime.tools.crm_jobber",
     # "acculynx":    "blufire.runtime.tools.crm_acculynx",
     # "servicetitan":"blufire.runtime.tools.crm_servicetitan",
@@ -72,6 +73,7 @@ EMAIL_PROVIDERS: dict[str, str] = {
 
 EMAIL_DRAFT_PROVIDERS: dict[str, str] = {
     "make_webhook": "blufire.runtime.tools.email_make_webhook",
+    "gsheets": "blufire.runtime.tools.email_gsheets",
     # "gmail_api":   "blufire.runtime.tools.email_gmail_api",
     # "outlook_api": "blufire.runtime.tools.email_outlook_api",
     # "ghl":         "blufire.runtime.tools.email_ghl_draft",
