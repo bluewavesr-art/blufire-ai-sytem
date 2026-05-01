@@ -93,7 +93,12 @@ def extract_json(raw: str) -> Any:
         except json.JSONDecodeError:
             continue
 
-    snippet = raw[:500]
+    # Show both ends so the offending region near the truncation boundary
+    # doesn't get hidden when the output is large.
+    if len(raw) <= 1000:
+        snippet = raw
+    else:
+        snippet = f"{raw[:500]} ...[{len(raw) - 1000} chars elided]... {raw[-500:]}"
     raise LLMOutputError(f"could not extract JSON from LLM output: {snippet!r}")
 
 

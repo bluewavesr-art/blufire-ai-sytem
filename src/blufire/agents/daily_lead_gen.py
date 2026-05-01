@@ -63,29 +63,46 @@ def _hubspot_has_email(hubspot: HubSpotClient, email: str) -> bool:
     return bool(rows)
 
 
+def _format_prospect_info(person: dict[str, Any]) -> str:
+    """Format Apollo enrichment for the LLM, suppressing empty fields so the
+    prompt doesn't carry noise like ``Industry: ``."""
+    org = person.get("organization") or {}
+    person_fields = [
+        ("Name", f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()),
+        ("Email", person.get("email")),
+        ("Title", person.get("title")),
+        ("Headline", person.get("headline")),
+        (
+            "Location",
+            ", ".join(p for p in [person.get("city"), person.get("state")] if p),
+        ),
+        ("LinkedIn", person.get("linkedin_url")),
+    ]
+    company_fields = [
+        ("Company", org.get("name")),
+        ("Industry", org.get("industry")),
+        ("Employees", org.get("estimated_num_employees")),
+        ("Revenue", org.get("annual_revenue_printed")),
+        ("Description", org.get("short_description")),
+        ("Website", org.get("website_url")),
+        ("Founded", org.get("founded_year")),
+        ("HQ", ", ".join(p for p in [org.get("city"), org.get("state")] if p)),
+    ]
+    lines = [f"{label}: {value}" for label, value in person_fields if value]
+    company_lines = [f"{label}: {value}" for label, value in company_fields if value]
+    if company_lines:
+        lines.append("")
+        lines.append("--- COMPANY ---")
+        lines.extend(company_lines)
+    return "\n".join(lines)
+
+
 def _draft_with_claude(
     ctx: RunContext, person: dict[str, Any], system_prompt: str
 ) -> dict[str, str]:
     settings = ctx.tenant.settings
     client = build_client(settings)
-    org = person.get("organization") or {}
-    prospect_info = (
-        f"Name: {person.get('first_name', '')} {person.get('last_name', '')}\n"
-        f"Email: {person.get('email', '')}\n"
-        f"Title: {person.get('title', '')}\n"
-        f"Headline: {person.get('headline', '')}\n"
-        f"City: {person.get('city', '')}, {person.get('state', '')}\n"
-        f"LinkedIn: {person.get('linkedin_url', '')}\n"
-        f"\n--- COMPANY ---\n"
-        f"Company: {org.get('name', '')}\n"
-        f"Industry: {org.get('industry', '')}\n"
-        f"Employees: {org.get('estimated_num_employees', '')}\n"
-        f"Revenue: {org.get('annual_revenue_printed', '')}\n"
-        f"Description: {org.get('short_description', '')}\n"
-        f"Website: {org.get('website_url', '')}\n"
-        f"Founded: {org.get('founded_year', '')}\n"
-        f"HQ: {org.get('city', '')}, {org.get('state', '')}\n"
-    )
+    prospect_info = _format_prospect_info(person)
     payload = complete_json(
         client,
         model=settings.models.for_role("drafting"),

@@ -13,10 +13,19 @@ from datetime import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, HttpUrl, SecretStr, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +33,17 @@ class TenantConfig(BaseModel):
     id: str = Field(..., min_length=1, description="Stable tenant identifier (slug).")
     display_name: str = Field(..., min_length=1)
     timezone: str = "UTC"
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(
+                f"unknown timezone: {v!r}. Use an IANA name (e.g. 'America/Chicago')."
+            ) from exc
+        return v
 
 
 class PathsConfig(BaseModel):
@@ -129,6 +149,19 @@ class Settings(BaseModel):
     compliance: ComplianceConfig = ComplianceConfig()
     logging: LoggingConfig = LoggingConfig()
     secrets: _Secrets = Field(default_factory=_Secrets)
+
+    @model_validator(mode="after")
+    def _require_webhook_when_prospects_configured(self) -> Settings:
+        # If the install has prospect searches defined, the daily-leadgen flow
+        # WILL run; refuse to load if no webhook target is configured. Prevents
+        # a silent runtime failure later.
+        if self.prospect_searches and self.outreach.webhook.gmail_draft_url is None:
+            raise ValueError(
+                "prospect_searches are configured but outreach.webhook.gmail_draft_url "
+                "is empty. Set MAKE_DRAFT_WEBHOOK_URL in .env or "
+                "outreach.webhook.gmail_draft_url in config.yaml."
+            )
+        return self
 
     @property
     def suppression_db_path(self) -> Path:

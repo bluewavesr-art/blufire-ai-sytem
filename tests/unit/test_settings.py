@@ -65,3 +65,67 @@ def test_settings_paths_derive_db(tmp_settings: Settings) -> None:
     assert tmp_settings.suppression_db_path.name == "suppression.sqlite"
     assert tmp_settings.send_log_db_path.name == "send_log.sqlite"
     assert tmp_settings.consent_log_db_path.name == "consent_log.sqlite"
+
+
+def test_invalid_timezone_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T", timezone: "Mars/Olympus"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+""".strip()
+    )
+    with pytest.raises(ValueError, match="unknown timezone"):
+        load_settings(cfg)
+
+
+def test_prospects_without_webhook_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+prospect_searches:
+  - name: "test search"
+    person_titles: ["CEO"]
+    per_page: 10
+""".strip()
+    )
+    with pytest.raises(ValueError, match="webhook"):
+        load_settings(cfg)
+
+
+def test_prospects_with_webhook_accepted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+prospect_searches:
+  - name: "test"
+    per_page: 5
+outreach:
+  webhook:
+    gmail_draft_url: "https://hook.example.com/x"
+""".strip()
+    )
+    settings = load_settings(cfg)
+    assert len(settings.prospect_searches) == 1
+    assert str(settings.outreach.webhook.gmail_draft_url) == "https://hook.example.com/x"

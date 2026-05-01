@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from blufire import __version__
 from blufire.logging_setup import configure, get_logger, new_run_id
 from blufire.runtime.context import RunContext, TenantContext
-from blufire.settings import Settings, get_settings
+from blufire.settings import Settings, get_settings, load_settings
 
 
 def _ctx(agent: str, settings: Settings) -> RunContext:
@@ -174,13 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    settings = (
-        get_settings()
-        if args.config is None
-        else Settings.model_validate(
-            __import__("yaml").safe_load(open(args.config, encoding="utf-8"))  # noqa: SIM115
-        )
-    )
+    settings = get_settings() if args.config is None else load_settings(Path(args.config))
     configure(settings)
 
     func = getattr(args, "func", None)

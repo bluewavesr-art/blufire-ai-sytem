@@ -6,6 +6,24 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (post-review hardening, in response to independent audit)
+- `Settings.tenant.timezone` validated against `zoneinfo.ZoneInfo` at config-load
+  time; bad timezone names fail loudly instead of silently defaulting to UTC.
+- `Settings` rejects configs that have `prospect_searches` defined but no
+  `outreach.webhook.gmail_draft_url` — prevents the daily-leadgen flow from
+  failing silently at runtime.
+- `LLMOutputError` now includes both head and tail of the offending output
+  (≤500 chars each side) so the failure mode near the truncation boundary is
+  visible.
+- New tests: timezone validation, webhook validation gate, escaped-backslash
+  JSON parsing, consent evidence hashing with `datetime` and `Decimal` values.
+
+### Changed (post-review)
+- `daily_lead_gen` prompt suppresses empty Apollo enrichment fields instead of
+  emitting `Industry: ` / `Revenue: ` etc.
+- `cli.main()` uses `load_settings()` directly instead of an inline
+  `__import__("yaml")` call.
+
 ### Added
 - `src/blufire/` package (settings, http, llm, integrations, compliance,
   runtime, agents, cli) — the new foundation for the resaleable autopilot.
