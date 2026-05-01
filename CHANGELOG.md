@@ -4,7 +4,7 @@ All notable changes to Blufire are tracked here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-05-01
 
 ### Security (WS7 deployment hardening)
 - `install.sh` now uses `git clone` instead of `cp -a $REPO_ROOT/.` for the
