@@ -111,6 +111,7 @@ class WebhookConfig(BaseModel):
 # is configured.
 CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl"]
 EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
+ProspectProvider = Literal["apollo", "zoominfo", "lusha"]
 
 
 class CrmConfig(BaseModel):
@@ -119,6 +120,10 @@ class CrmConfig(BaseModel):
 
 class EmailConfig(BaseModel):
     provider: EmailProvider = "gmail"
+
+
+class ProspectConfig(BaseModel):
+    provider: ProspectProvider = "apollo"
 
 
 class OutreachConfig(BaseModel):
@@ -170,6 +175,7 @@ class Settings(BaseModel):
     prospect_searches: list[ProspectSearch] = Field(default_factory=list)
     crm: CrmConfig = CrmConfig()
     email: EmailConfig = EmailConfig()
+    prospect: ProspectConfig = ProspectConfig()
     outreach: OutreachConfig = OutreachConfig()
     compliance: ComplianceConfig = ComplianceConfig()
     logging: LoggingConfig = LoggingConfig()

@@ -61,3 +61,116 @@ class LogEmailOutput(BaseModel):
 
     logged: bool
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# crm.search_contacts
+# ---------------------------------------------------------------------------
+
+
+class SearchContactsInput(BaseModel):
+    email: str
+    properties: list[str] = Field(default_factory=lambda: list(DEFAULT_CONTACT_PROPERTIES))
+
+
+class SearchContactsOutput(BaseModel):
+    contacts: list[ContactRecord] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# crm.create_contact
+# ---------------------------------------------------------------------------
+
+
+class CreateContactInput(BaseModel):
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateContactOutput(BaseModel):
+    """``contact_id`` is None when the contact already existed (HubSpot 409
+    or equivalent). Callers treat this as a soft de-dup signal, not a failure."""
+
+    contact_id: str | None = None
+    already_existed: bool = False
+
+
+# ---------------------------------------------------------------------------
+# crm.list_deals
+# ---------------------------------------------------------------------------
+
+
+DEFAULT_DEAL_PROPERTIES = [
+    "dealname",
+    "dealstage",
+    "amount",
+    "closedate",
+    "pipeline",
+    "hubspot_owner_id",
+    "hs_lastmodifieddate",
+]
+
+
+class ListDealsInput(BaseModel):
+    properties: list[str] = Field(default_factory=lambda: list(DEFAULT_DEAL_PROPERTIES))
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class DealRecord(BaseModel):
+    """Provider-agnostic deal shape. Implementations map their native deal
+    object (HubSpot Deal, ServiceTitan Job, Jobber Quote, …) into this shape."""
+
+    id: str
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class ListDealsOutput(BaseModel):
+    deals: list[DealRecord] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# crm.update_deal
+# ---------------------------------------------------------------------------
+
+
+class UpdateDealInput(BaseModel):
+    deal_id: str
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateDealOutput(BaseModel):
+    updated: bool = True
+    error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# crm.create_deal
+# ---------------------------------------------------------------------------
+
+
+class CreateDealInput(BaseModel):
+    dealname: str
+    stage: str
+    amount: float | None = None
+    contact_id: str | None = None
+
+
+class CreateDealOutput(BaseModel):
+    deal_id: str | None = None
+    error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# crm.create_task
+# ---------------------------------------------------------------------------
+
+
+class CreateTaskInput(BaseModel):
+    title: str
+    contact_id: str | None = None
+    due_days: int = Field(default=3, ge=0, le=365)
+
+
+class CreateTaskOutput(BaseModel):
+    task_id: str | None = None
+    created: bool = False
+    error: str | None = None

@@ -17,18 +17,34 @@ def _ctx(agent: str, settings: Settings) -> RunContext:
 
 
 def _cmd_leadgen_run(args: argparse.Namespace, settings: Settings) -> int:
-    from blufire.agents import daily_lead_gen, lead_generation
-
     ctx = _ctx("lead_generation", settings)
     if args.scope == "ad-hoc":
-        results = lead_generation.run(
-            ctx,
-            job_titles=args.titles or ["CEO", "Owner"],
-            location=args.location,
-            limit=args.limit,
-        )
-        ctx.log.info("leadgen_adhoc_done", count=len(results))
+        if args.via_capability:
+            from blufire.runtime.bootstrap import LEAD_GENERATION_BLUEPRINT, bootstrap
+            from blufire.runtime.orchestrators import lead_generation as orchestrator
+
+            bootstrap(settings)
+            result = orchestrator.run(
+                ctx,
+                LEAD_GENERATION_BLUEPRINT,
+                job_titles=args.titles or ["CEO", "Owner"],
+                location=args.location,
+                limit=args.limit,
+            )
+            ctx.log.info("leadgen_adhoc_done", **result["counters"])
+        else:
+            from blufire.agents import lead_generation
+
+            results = lead_generation.run(
+                ctx,
+                job_titles=args.titles or ["CEO", "Owner"],
+                location=args.location,
+                limit=args.limit,
+            )
+            ctx.log.info("leadgen_adhoc_done", count=len(results))
     else:
+        from blufire.agents import daily_lead_gen
+
         counters = daily_lead_gen.run(ctx)
         ctx.log.info("leadgen_daily_done", **counters)
     return 0
@@ -62,10 +78,17 @@ def _cmd_outreach_run(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_pipeline_run(args: argparse.Namespace, settings: Settings) -> int:
-    from blufire.agents import crm_pipeline
-
     ctx = _ctx("crm_pipeline", settings)
-    result = crm_pipeline.run(ctx, auto_tasks=args.auto_tasks)
+    if args.via_capability:
+        from blufire.runtime.bootstrap import CRM_PIPELINE_BLUEPRINT, bootstrap
+        from blufire.runtime.orchestrators import crm_pipeline as orchestrator
+
+        bootstrap(settings)
+        result = orchestrator.run(ctx, CRM_PIPELINE_BLUEPRINT, auto_tasks=args.auto_tasks)
+    else:
+        from blufire.agents import crm_pipeline
+
+        result = crm_pipeline.run(ctx, auto_tasks=args.auto_tasks)
     ctx.log.info("pipeline_done", **{k: v for k, v in result.items() if k != "actions"})
     return 0
 
@@ -141,6 +164,12 @@ def build_parser() -> argparse.ArgumentParser:
     leadgen_run.add_argument("--titles", nargs="*", help="Job titles for ad-hoc search")
     leadgen_run.add_argument("--location", help="Location for ad-hoc search")
     leadgen_run.add_argument("--limit", type=int, default=25)
+    leadgen_run.add_argument(
+        "--via-capability",
+        action="store_true",
+        help="Run through the Phase 2 ToolRegistry / Capability orchestrator "
+        "instead of the Phase 1 module path. (ad-hoc scope only)",
+    )
     leadgen_run.set_defaults(func=_cmd_leadgen_run)
 
     outreach = sub.add_parser("outreach", help="Email outreach").add_subparsers(
@@ -163,6 +192,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pipeline_run = pipeline.add_parser("run", help="Analyze the CRM pipeline")
     pipeline_run.add_argument("--auto-tasks", action="store_true")
+    pipeline_run.add_argument(
+        "--via-capability",
+        action="store_true",
+        help="Run through the Phase 2 ToolRegistry / Capability orchestrator "
+        "instead of the Phase 1 module path.",
+    )
     pipeline_run.set_defaults(func=_cmd_pipeline_run)
 
     suppress = sub.add_parser("suppress", help="Suppression list management").add_subparsers(
