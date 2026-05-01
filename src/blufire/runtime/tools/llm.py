@@ -7,6 +7,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from blufire.agents.crm_pipeline import analyze_pipeline
+from blufire.agents.daily_lead_gen import _draft_with_claude as draft_from_apollo
+from blufire.agents.daily_lead_gen import _load_system_prompt as load_default_system_prompt
 from blufire.agents.email_outreach import draft_email
 from blufire.agents.lead_generation import score_lead
 from blufire.runtime.context import RunContext
@@ -123,3 +125,41 @@ class AnalyzePipelineTool(BaseTool[AnalyzePipelineInput, AnalyzePipelineOutput])
                     )
                 )
         return AnalyzePipelineOutput(summary=summary, actions=actions)
+
+
+# ---------------------------------------------------------------------------
+# llm.draft_outreach_email_from_prospect
+#
+# Distinct from llm.draft_outreach_email because the input shape is different:
+# this one takes a rich Apollo enrichment record (firmographics, headline,
+# industry, etc.) rather than a sparse HubSpot contact dict. Used by the
+# daily_lead_gen flow whose prompt is tuned for Apollo's data.
+# ---------------------------------------------------------------------------
+
+
+class DraftOutreachFromProspectInput(BaseModel):
+    person: dict[str, Any] = Field(default_factory=dict)
+    system_prompt: str | None = None
+
+
+class DraftOutreachFromProspectOutput(BaseModel):
+    subject: str
+    body: str
+
+
+class DraftOutreachFromProspectTool(
+    BaseTool[DraftOutreachFromProspectInput, DraftOutreachFromProspectOutput]
+):
+    name = "llm.draft_outreach_email_from_prospect"
+    description = "Draft a cold-outreach {subject, body} from a rich prospect record."
+    input_schema = DraftOutreachFromProspectInput
+    output_schema = DraftOutreachFromProspectOutput
+
+    def invoke(
+        self, ctx: RunContext, payload: DraftOutreachFromProspectInput
+    ) -> DraftOutreachFromProspectOutput:
+        prompt = payload.system_prompt or load_default_system_prompt(ctx)
+        result = draft_from_apollo(ctx, payload.person, prompt)
+        return DraftOutreachFromProspectOutput(
+            subject=str(result["subject"]), body=str(result["body"])
+        )

@@ -52,8 +52,10 @@ EXPECTED_TOOLS = sorted(
         "crm.create_deal",
         "crm.create_task",
         "email.send_smtp",
+        "email.create_draft",
         "prospect.search_people",
         "llm.draft_outreach_email",
+        "llm.draft_outreach_email_from_prospect",
         "llm.score_prospect",
         "llm.analyze_pipeline",
     ]

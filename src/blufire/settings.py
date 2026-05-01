@@ -111,6 +111,7 @@ class WebhookConfig(BaseModel):
 # is configured.
 CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl"]
 EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
+EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl"]
 ProspectProvider = Literal["apollo", "zoominfo", "lusha"]
 
 
@@ -119,7 +120,17 @@ class CrmConfig(BaseModel):
 
 
 class EmailConfig(BaseModel):
+    """Two independent contracts:
+
+    * ``provider`` selects the immediate-send backend (``email.send_smtp``).
+    * ``draft_provider`` selects the draft-creation backend
+      (``email.create_draft``).
+
+    A tenant may use Mailgun for sends and a Make.com webhook for drafts;
+    they're not coupled."""
+
     provider: EmailProvider = "gmail"
+    draft_provider: EmailDraftProvider = "make_webhook"
 
 
 class ProspectConfig(BaseModel):

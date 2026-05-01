@@ -43,9 +43,16 @@ def _cmd_leadgen_run(args: argparse.Namespace, settings: Settings) -> int:
             )
             ctx.log.info("leadgen_adhoc_done", count=len(results))
     else:
-        from blufire.agents import daily_lead_gen
+        if args.via_capability:
+            from blufire.runtime.bootstrap import DAILY_LEADGEN_BLUEPRINT, bootstrap
+            from blufire.runtime.orchestrators import daily_lead_gen as orchestrator
 
-        counters = daily_lead_gen.run(ctx)
+            bootstrap(settings)
+            counters = orchestrator.run(ctx, DAILY_LEADGEN_BLUEPRINT)
+        else:
+            from blufire.agents import daily_lead_gen
+
+            counters = daily_lead_gen.run(ctx)
         ctx.log.info("leadgen_daily_done", **counters)
     return 0
 
@@ -168,7 +175,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--via-capability",
         action="store_true",
         help="Run through the Phase 2 ToolRegistry / Capability orchestrator "
-        "instead of the Phase 1 module path. (ad-hoc scope only)",
+        "instead of the Phase 1 module path. Supported on both --scope ad-hoc "
+        "and --scope daily.",
     )
     leadgen_run.set_defaults(func=_cmd_leadgen_run)
 

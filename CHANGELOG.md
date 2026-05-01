@@ -6,6 +6,29 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Phase 2 step 3: daily_lead_gen orchestrator + email.create_draft contract)
+- New tool contract `email.create_draft` (separate from `email.send_smtp`):
+  creates a draft for human review rather than sending immediately. First
+  implementation `email_make_webhook.py` posts to a Make.com webhook that
+  builds a Gmail draft.
+- New `EmailConfig.draft_provider` settings field (Literal: `make_webhook,
+  gmail_api, outlook_api, ghl`, default `make_webhook`). Independent from
+  `email.provider` so a tenant can use Mailgun for sends and a webhook for
+  drafts simultaneously.
+- New LLM tool `llm.draft_outreach_email_from_prospect` — different from
+  `llm.draft_outreach_email` because the input is a rich Apollo enrichment
+  record rather than a sparse HubSpot contact dict.
+- `runtime/orchestrators/daily_lead_gen.py` — capability-driven runner that
+  searches multiple `ProspectSearch` configs in sequence with intra-run
+  dedup, applies all four cheap filters (no-email / dedup / suppression /
+  send-cap) before any Claude call, then drafts + posts to webhook for
+  human review. List-Unsubscribe header intentionally omitted from drafts
+  (it belongs on the actual outbound message the human eventually sends).
+- `DAILY_LEADGEN_CAPABILITY` + `DAILY_LEADGEN_BLUEPRINT` in `bootstrap.py`
+  with the new `EMAIL_DRAFT_PROVIDERS` dispatch table.
+- CLI: `blufire leadgen run --scope daily --via-capability` now exercises
+  the new path.
+
 ### Added (Phase 2 step 2: lead_generation + crm_pipeline orchestrators)
 - 6 new CRM tool contracts in `runtime/tools/crm.py`: `crm.search_contacts`,
   `crm.create_contact`, `crm.list_deals`, `crm.update_deal`, `crm.create_deal`,
