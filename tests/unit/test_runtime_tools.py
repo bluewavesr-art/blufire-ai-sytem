@@ -45,8 +45,17 @@ EXPECTED_TOOLS = sorted(
         "compliance.build_footer",
         "crm.list_contacts",
         "crm.log_email",
+        "crm.search_contacts",
+        "crm.create_contact",
+        "crm.list_deals",
+        "crm.update_deal",
+        "crm.create_deal",
+        "crm.create_task",
         "email.send_smtp",
+        "prospect.search_people",
         "llm.draft_outreach_email",
+        "llm.score_prospect",
+        "llm.analyze_pipeline",
     ]
 )
 

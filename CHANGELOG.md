@@ -6,6 +6,29 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Phase 2 step 2: lead_generation + crm_pipeline orchestrators)
+- 6 new CRM tool contracts in `runtime/tools/crm.py`: `crm.search_contacts`,
+  `crm.create_contact`, `crm.list_deals`, `crm.update_deal`, `crm.create_deal`,
+  `crm.create_task`. Each is provider-agnostic; HubSpot impls in
+  `runtime/tools/crm_hubspot.py`.
+- `runtime/tools/prospect.py` — provider-agnostic prospect-search contract,
+  with `runtime/tools/prospect_apollo.py` as the first implementation.
+- `runtime/tools/llm.py` — `llm.score_prospect` and `llm.analyze_pipeline`
+  tools wrapping the existing Phase 1 helpers with strict pydantic outputs.
+- `runtime/orchestrators/lead_generation.py` — capability-driven runner that
+  searches a prospect provider, scores fit with the LLM, dedups against the
+  CRM, and creates new contacts. Returns the same shape the Phase 1 module
+  returns plus an explicit counters dict.
+- `runtime/orchestrators/crm_pipeline.py` — capability-driven runner that
+  lists CRM deals, asks the LLM for an analysis, and (optionally) creates
+  one CRM task per recommended action. Task-create failures are logged
+  per-deal but do not fail the run.
+- `settings.prospect.provider` (Literal: `apollo, zoominfo, lusha`, default
+  `apollo`). `bootstrap.py` adds `PROSPECT_PROVIDERS` dispatch table mirroring
+  the CRM/email pattern.
+- New CLI flags: `blufire leadgen run --scope ad-hoc --via-capability` and
+  `blufire pipeline run --via-capability`.
+
 ### Added (Phase 2 step 1: capability-driven runtime)
 - `runtime/tools/` — nine concrete `Tool` implementations with pydantic
   input/output schemas (compliance × 5, crm × 2, email × 1, llm × 1).

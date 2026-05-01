@@ -43,7 +43,11 @@ from blufire.runtime.tools.compliance import (
     RecordConsentTool,
     RecordSendTool,
 )
-from blufire.runtime.tools.llm import DraftOutreachEmailTool
+from blufire.runtime.tools.llm import (
+    AnalyzePipelineTool,
+    DraftOutreachEmailTool,
+    ScoreProspectTool,
+)
 from blufire.settings import Settings, get_settings
 
 # Provider dispatch tables. The values are dotted module paths whose
@@ -63,6 +67,12 @@ EMAIL_PROVIDERS: dict[str, str] = {
     # "sendgrid":    "blufire.runtime.tools.email_sendgrid",
     # "ses":         "blufire.runtime.tools.email_ses",
     # "ghl":         "blufire.runtime.tools.email_ghl",
+}
+
+PROSPECT_PROVIDERS: dict[str, str] = {
+    "apollo": "blufire.runtime.tools.prospect_apollo",
+    # "zoominfo":    "blufire.runtime.tools.prospect_zoominfo",
+    # "lusha":       "blufire.runtime.tools.prospect_lusha",
 }
 
 
@@ -87,6 +97,43 @@ EMAIL_OUTREACH_BLUEPRINT = AgentBlueprint(
     domain="outreach",
     description="Drafts and sends compliant cold outreach emails to CRM contacts.",
     capabilities=(EMAIL_OUTREACH_CAPABILITY,),
+)
+
+
+LEAD_GENERATION_CAPABILITY = Capability(
+    name="lead_generation.score_and_sync",
+    tool_names=(
+        "prospect.search_people",
+        "llm.score_prospect",
+        "crm.search_contacts",
+        "crm.create_contact",
+    ),
+    required=True,
+)
+
+LEAD_GENERATION_BLUEPRINT = AgentBlueprint(
+    name="lead_generation",
+    domain="leadgen",
+    description="Searches a prospect provider, scores fit with the LLM, and upserts into the CRM.",
+    capabilities=(LEAD_GENERATION_CAPABILITY,),
+)
+
+
+CRM_PIPELINE_CAPABILITY = Capability(
+    name="crm_pipeline.analyze_and_act",
+    tool_names=(
+        "crm.list_deals",
+        "llm.analyze_pipeline",
+        "crm.create_task",
+    ),
+    required=True,
+)
+
+CRM_PIPELINE_BLUEPRINT = AgentBlueprint(
+    name="crm_pipeline",
+    domain="crm",
+    description="Analyzes the CRM deal pipeline and (optionally) creates follow-up tasks.",
+    capabilities=(CRM_PIPELINE_CAPABILITY,),
 )
 
 
@@ -146,13 +193,18 @@ def bootstrap(
         RecordConsentTool,
         BuildFooterTool,
         DraftOutreachEmailTool,
+        ScoreProspectTool,
+        AnalyzePipelineTool,
     ):
         _register_if_missing(tools, tool_cls())
 
     # Provider-dispatched tools: pick by tenant config.
     _load_provider_register("crm", settings.crm.provider, CRM_PROVIDERS)(tools)
     _load_provider_register("email", settings.email.provider, EMAIL_PROVIDERS)(tools)
+    _load_provider_register("prospect", settings.prospect.provider, PROSPECT_PROVIDERS)(tools)
 
     capabilities.register(EMAIL_OUTREACH_CAPABILITY)
+    capabilities.register(LEAD_GENERATION_CAPABILITY)
+    capabilities.register(CRM_PIPELINE_CAPABILITY)
 
     return tools, capabilities
