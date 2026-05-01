@@ -1,0 +1,43 @@
+[Unit]
+Description=Blufire daily lead generation (tenant @TENANT@)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=blufire
+Group=blufire
+WorkingDirectory=@SOURCE@
+EnvironmentFile=/etc/blufire/@TENANT@.env
+Environment=BLUFIRE_CONFIG=/etc/blufire/@TENANT@.yaml
+Environment=BLUFIRE_TENANT_ID=@TENANT@
+ExecStart=@VENV@/bin/blufire leadgen run --scope daily
+Nice=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+ReadWritePaths=@DATA@/@TENANT@ @LOG@/@TENANT@
