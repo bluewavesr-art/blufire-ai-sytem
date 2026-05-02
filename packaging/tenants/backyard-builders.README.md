@@ -53,7 +53,7 @@ In the same project (https://console.cloud.google.com/apis/library):
      outbound IP. (You can leave this open for testing and lock it down
      after the first successful run.)
    - Set **API restrictions → Restrict key** → check only **Places API**
-3. Save the key value — this is `GOOGLE_PLACES_API_KEY`.
+3. Save the key value — this is `GPLACES_API_KEY`.
 
 ### 2c. Create the Sheets service account
 
@@ -84,7 +84,7 @@ Edit `/tmp/backyard.yaml`:
 
 Edit `/tmp/backyard.env`:
 - `ANTHROPIC_API_KEY` — sk-ant-...
-- `GOOGLE_PLACES_API_KEY` — from step 2b
+- `GPLACES_API_KEY` — from step 2b
 - `GSHEETS_CREDENTIALS_PATH=/etc/blufire/backyard-builders.gsheets.json`
 
 Review `/tmp/backyard.system-prompt.txt` — this is the prompt the LLM

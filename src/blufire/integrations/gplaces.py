@@ -1,6 +1,6 @@
 """Google Places (Maps) API client.
 
-Single-tenant: each tenant supplies its own ``GOOGLE_PLACES_API_KEY``.
+Single-tenant: each tenant supplies its own ``GPLACES_API_KEY``.
 Used for local-business discovery — name, address, phone, website. The
 API does NOT return email addresses; pair with the ``enrich.find_email``
 tool to attempt email discovery from the business's website.
@@ -57,7 +57,7 @@ class GPlacesClient:
 
     def __init__(self, settings: Settings) -> None:
         if settings.secrets.gplaces_api_key is None:
-            raise GPlacesAuthError("GOOGLE_PLACES_API_KEY is not configured.")
+            raise GPlacesAuthError("GPLACES_API_KEY is not configured.")
         self._client = googlemaps.Client(key=settings.secrets.gplaces_api_key.get_secret_value())
         self._log = get_logger("blufire.integrations.gplaces").bind(tenant_id=settings.tenant.id)
 
