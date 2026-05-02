@@ -88,20 +88,6 @@ class ProspectSearch(BaseModel):
     per_page: int = Field(default=10, ge=1, le=100)
 
 
-class GSheetsConfig(BaseModel):
-    """Sheet-as-CRM configuration. Used when ``crm.provider == "gsheets"``
-    and/or ``email.draft_provider == "gsheets"``.
-
-    The ``leads_*`` worksheet is the source-of-truth for contacts (dedup
-    via ``crm.search_contacts``, append via ``crm.create_contact``). The
-    ``drafts_*`` worksheet is where ``email.create_draft`` appends new
-    drafts for human review."""
-
-    spreadsheet_url: HttpUrl | None = None
-    leads_worksheet: str = "Leads"
-    drafts_worksheet: str = "Drafts"
-
-
 class SendWindow(BaseModel):
     start: time = time(8, 0)
     end: time = time(17, 0)
@@ -126,7 +112,16 @@ class WebhookConfig(BaseModel):
 CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl", "gsheets"]
 EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
 EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl", "gsheets"]
-ProspectProvider = Literal["apollo", "zoominfo", "lusha"]
+ProspectProvider = Literal["apollo", "gplaces", "zoominfo", "lusha"]
+EnrichProvider = Literal["website", "hunter", "apollo"]
+
+
+class EnrichConfig(BaseModel):
+    """Email-enrichment provider used after the prospect search returns a
+    lead with no email. Set to ``"website"`` to scrape the lead's website
+    for ``mailto:`` links and obvious email patterns."""
+
+    provider: EnrichProvider = "website"
 
 
 class CrmConfig(BaseModel):
@@ -149,6 +144,23 @@ class EmailConfig(BaseModel):
 
 class ProspectConfig(BaseModel):
     provider: ProspectProvider = "apollo"
+
+
+class GSheetsConfig(BaseModel):
+    """Sheet-as-CRM configuration. Used when ``crm.provider == "gsheets"``
+    and/or ``email.draft_provider == "gsheets"``.
+
+    The ``leads_*`` worksheet is the source-of-truth for contacts (dedup
+    via ``crm.search_contacts``, append via ``crm.create_contact``). The
+    ``drafts_*`` worksheet is where ``email.create_draft`` appends new
+    drafts for human review. The ``call_list_*`` worksheet is where the
+    daily_lead_gen orchestrator routes leads with no email so the team
+    can phone them instead."""
+
+    spreadsheet_url: HttpUrl | None = None
+    leads_worksheet: str = "Leads"
+    drafts_worksheet: str = "Drafts"
+    call_list_worksheet: str = "Call List"
 
 
 class OutreachConfig(BaseModel):
@@ -191,6 +203,7 @@ class _Secrets(BaseSettings):
     blufire_license_key: SecretStr | None = None
     sentry_dsn: str | None = None
     gsheets_credentials_path: Path | None = None
+    gplaces_api_key: SecretStr | None = None
 
 
 class Settings(BaseModel):
@@ -202,6 +215,7 @@ class Settings(BaseModel):
     crm: CrmConfig = CrmConfig()
     email: EmailConfig = EmailConfig()
     prospect: ProspectConfig = ProspectConfig()
+    enrich: EnrichConfig = EnrichConfig()
     gsheets: GSheetsConfig = GSheetsConfig()
     outreach: OutreachConfig = OutreachConfig()
     compliance: ComplianceConfig = ComplianceConfig()

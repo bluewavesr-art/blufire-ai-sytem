@@ -24,11 +24,13 @@ from blufire.runtime.tools.compliance import (
     RecordConsentOutput,
 )
 from blufire.runtime.tools.crm import (
+    AppendCallLeadOutput,
     ContactRecord,
     CreateContactOutput,
     SearchContactsOutput,
 )
 from blufire.runtime.tools.email import CreateDraftOutput
+from blufire.runtime.tools.enrich import FindEmailOutput
 from blufire.runtime.tools.llm import DraftOutreachFromProspectOutput
 from blufire.runtime.tools.prospect import PersonRecord, SearchPeopleOutput
 from blufire.settings import ProspectSearch
@@ -131,6 +133,12 @@ def _registry(
             CreateDraftOutput(created=draft_succeeds, error=None if draft_succeeds else "http_500"),
         )
     )
+    # Phase 3 additions: enrichment + call-list sink. Defaults are no-ops
+    # for the existing tests (every test person has an email already).
+    reg.register(
+        _stub("enrich.find_email", FindEmailOutput(email=None, confidence="none", source=""))
+    )
+    reg.register(_stub("crm.append_call_lead", AppendCallLeadOutput(appended=True)))
     return reg
 
 
@@ -159,7 +167,8 @@ def test_full_path_drafts_one_per_survivor(tmp_settings: Any) -> None:
     assert counters["fetched"] == 2
     assert counters["drafted"] == 2
     assert counters["errors"] == 0
-    assert counters["skipped_no_email"] == 0
+    assert counters["skipped_unreachable"] == 0
+    assert counters["routed_to_call_list"] == 0
     assert counters["skipped_existing"] == 0
     assert counters["skipped_suppressed"] == 0
     assert counters["skipped_capped"] == 0
@@ -229,7 +238,9 @@ def test_skips_capped_before_drafting(tmp_settings: Any) -> None:
     assert counters["drafted"] == 0
 
 
-def test_no_email_is_skipped_before_any_other_check(tmp_settings: Any) -> None:
+def test_no_email_no_phone_is_unreachable(tmp_settings: Any) -> None:
+    """Truly unreachable prospects (no email, no phone, no website) are
+    counted as ``skipped_unreachable`` and silently dropped."""
     people = [
         {"first_name": "Nameless", "email": None},
         {"first_name": "Has", "email": "ok@x.test"},
@@ -242,7 +253,7 @@ def test_no_email_is_skipped_before_any_other_check(tmp_settings: Any) -> None:
         sleep_between_searches=0,
         registry=reg,
     )
-    assert counters["skipped_no_email"] == 1
+    assert counters["skipped_unreachable"] == 1
     assert counters["drafted"] == 1
 
 
@@ -268,6 +279,7 @@ def test_draft_failure_does_not_abort_remaining_prospects(tmp_settings: Any) -> 
     reg2 = ToolRegistry()
     for name in (
         "prospect.search_people",
+        "enrich.find_email",
         "crm.search_contacts",
         "compliance.check_suppression",
         "compliance.check_send_cap",
@@ -275,6 +287,7 @@ def test_draft_failure_does_not_abort_remaining_prospects(tmp_settings: Any) -> 
         "compliance.build_footer",
         "compliance.record_consent",
         "email.create_draft",
+        "crm.append_call_lead",
     ):
         reg2.register(reg.get(name))  # type: ignore[arg-type]
     reg2.register(failing_drafter)
@@ -313,6 +326,201 @@ def test_raises_when_required_tool_missing(tmp_settings: Any) -> None:
             sleep_between_searches=0,
             registry=ToolRegistry(),
         )
+
+
+# ---------------------------------------------------------------------------
+# Bifurcation: enrichment + call-list routing for Places-style providers
+# ---------------------------------------------------------------------------
+
+
+def _places_registry(
+    people: list[dict[str, Any]],
+    *,
+    enrichment_email: str | None = None,
+    enrichment_confidence: str = "high",
+    call_list_succeeds: bool = True,
+) -> ToolRegistry:
+    """A registry whose prospects come in WITHOUT email (Places-style).
+    The enrichment stub returns ``enrichment_email`` for any website it's
+    asked about — set to ``None`` to simulate an unsuccessful scrape."""
+    person_records = [
+        PersonRecord(
+            email=p.get("email"),
+            company=p.get("company"),
+            phone=p.get("phone"),
+            address=p.get("address"),
+            city=p.get("city"),
+            state=p.get("state"),
+            website=p.get("website"),
+            raw=p,
+        )
+        for p in people
+    ]
+    reg = ToolRegistry()
+    reg.register(_stub("prospect.search_people", SearchPeopleOutput(people=person_records)))
+    reg.register(
+        _stub(
+            "enrich.find_email",
+            FindEmailOutput(email=enrichment_email, confidence=enrichment_confidence, source="t"),
+        )
+    )
+    reg.register(_stub("crm.search_contacts", SearchContactsOutput(contacts=[])))
+    reg.register(_stub("compliance.check_suppression", CheckSuppressionOutput(suppressed=False)))
+    reg.register(_stub("compliance.check_send_cap", CheckSendCapOutput(allowed=True)))
+    reg.register(_stub("crm.create_contact", CreateContactOutput(contact_id="c-1")))
+    reg.register(
+        _stub(
+            "llm.draft_outreach_email_from_prospect",
+            DraftOutreachFromProspectOutput(subject="S", body="B"),
+        )
+    )
+    reg.register(
+        _stub(
+            "compliance.build_footer",
+            BuildFooterOutput(body_with_footer="B + footer", list_unsubscribe=None),
+        )
+    )
+    reg.register(_stub("compliance.record_consent", RecordConsentOutput(evidence_hash="0" * 64)))
+    reg.register(_stub("email.create_draft", CreateDraftOutput(created=True)))
+    reg.register(_stub("crm.append_call_lead", AppendCallLeadOutput(appended=call_list_succeeds)))
+    return reg
+
+
+def test_enrichment_promotes_no_email_lead_to_draft_path(tmp_settings: Any) -> None:
+    people = [
+        {
+            "company": "ACME Property Mgmt",
+            "phone": "555-1234",
+            "website": "https://acme.test",
+        }
+    ]
+    reg = _places_registry(people, enrichment_email="info@acme.test")
+    counters = orchestrator.run(
+        _ctx(tmp_settings),
+        DAILY_LEADGEN_BLUEPRINT,
+        searches=[_search()],
+        sleep_between_searches=0,
+        registry=reg,
+    )
+    assert counters["enriched_email_found"] == 1
+    assert counters["drafted"] == 1
+    assert counters["routed_to_call_list"] == 0
+    # Critical: enrichment was attempted (Places lead had no email).
+    reg.get("enrich.find_email").invoke.assert_called_once()  # type: ignore[union-attr]
+    reg.get("crm.append_call_lead").invoke.assert_not_called()  # type: ignore[union-attr]
+
+
+def test_failed_enrichment_routes_to_call_list_when_phone_present(
+    tmp_settings: Any,
+) -> None:
+    people = [
+        {
+            "company": "ACME Property Mgmt",
+            "phone": "555-1234",
+            "address": "100 Main St",
+            "city": "Fort Worth",
+            "state": "TX",
+            "website": "https://acme.test",
+        }
+    ]
+    reg = _places_registry(people, enrichment_email=None)
+    counters = orchestrator.run(
+        _ctx(tmp_settings),
+        DAILY_LEADGEN_BLUEPRINT,
+        searches=[_search()],
+        sleep_between_searches=0,
+        registry=reg,
+    )
+    assert counters["routed_to_call_list"] == 1
+    assert counters["drafted"] == 0
+    assert counters["enriched_email_found"] == 0
+    # Critical: drafter was NOT invoked (no email).
+    reg.get("llm.draft_outreach_email_from_prospect").invoke.assert_not_called()  # type: ignore[union-attr]
+    # Critical: call-list sink was invoked with the phone number.
+    call_args = reg.get("crm.append_call_lead").invoke.call_args  # type: ignore[union-attr]
+    payload = call_args.args[1]
+    assert payload.phone == "555-1234"
+    assert payload.company == "ACME Property Mgmt"
+    assert payload.city == "Fort Worth"
+    assert payload.talking_points  # non-empty
+
+
+def test_no_email_no_phone_no_website_is_skipped(tmp_settings: Any) -> None:
+    """No way to reach this prospect — drop it without writing anywhere."""
+    people = [{"company": "Mystery Co"}]
+    reg = _places_registry(people, enrichment_email=None)
+    counters = orchestrator.run(
+        _ctx(tmp_settings),
+        DAILY_LEADGEN_BLUEPRINT,
+        searches=[_search()],
+        sleep_between_searches=0,
+        registry=reg,
+    )
+    assert counters["skipped_unreachable"] == 1
+    reg.get("crm.append_call_lead").invoke.assert_not_called()  # type: ignore[union-attr]
+    reg.get("email.create_draft").invoke.assert_not_called()  # type: ignore[union-attr]
+
+
+def test_phone_only_no_website_routes_to_call_list_without_enrichment(
+    tmp_settings: Any,
+) -> None:
+    """If there's no website to scrape, we skip enrichment but still
+    route to the call list as long as we have a phone."""
+    people = [{"company": "Phone Only Co", "phone": "555-9999"}]
+    reg = _places_registry(people, enrichment_email=None)
+    counters = orchestrator.run(
+        _ctx(tmp_settings),
+        DAILY_LEADGEN_BLUEPRINT,
+        searches=[_search()],
+        sleep_between_searches=0,
+        registry=reg,
+    )
+    assert counters["routed_to_call_list"] == 1
+    # Enrichment skipped because website is missing.
+    reg.get("enrich.find_email").invoke.assert_not_called()  # type: ignore[union-attr]
+
+
+def test_enrichment_failure_falls_back_to_call_list(tmp_settings: Any) -> None:
+    """If enrich.find_email raises, increment errors implicitly via the
+    no-email path → call-list (lead isn't lost just because the scrape
+    crashed)."""
+    people = [
+        {
+            "company": "Crashy Co",
+            "phone": "555-0000",
+            "website": "https://crashy.test",
+        }
+    ]
+    reg = _places_registry(people, enrichment_email=None)
+    crashing_enricher = MagicMock(spec=Tool)
+    crashing_enricher.name = "enrich.find_email"
+    crashing_enricher.invoke.side_effect = RuntimeError("scrape blew up")
+    # Replace the enricher.
+    reg2 = ToolRegistry()
+    for name in (
+        "prospect.search_people",
+        "crm.search_contacts",
+        "compliance.check_suppression",
+        "compliance.check_send_cap",
+        "crm.create_contact",
+        "llm.draft_outreach_email_from_prospect",
+        "compliance.build_footer",
+        "compliance.record_consent",
+        "email.create_draft",
+        "crm.append_call_lead",
+    ):
+        reg2.register(reg.get(name))  # type: ignore[arg-type]
+    reg2.register(crashing_enricher)
+
+    counters = orchestrator.run(
+        _ctx(tmp_settings),
+        DAILY_LEADGEN_BLUEPRINT,
+        searches=[_search()],
+        sleep_between_searches=0,
+        registry=reg2,
+    )
+    assert counters["routed_to_call_list"] == 1
+    assert counters["enriched_email_found"] == 0
 
 
 # ---------------------------------------------------------------------------

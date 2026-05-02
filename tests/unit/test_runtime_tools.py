@@ -36,6 +36,11 @@ from blufire.runtime.tools.crm import ContactRecord, ListContactsOutput, LogEmai
 from blufire.runtime.tools.email import SendEmailOutput
 from blufire.runtime.tools.llm import DraftOutreachEmailOutput
 
+# What ``bootstrap()`` registers under the *default* tmp_settings provider
+# set (hubspot CRM + gmail SMTP + make_webhook drafts + apollo prospects +
+# website enrichment). Provider-specific tools like ``crm.append_call_lead``
+# (gsheets-only) are intentionally NOT in this list — they're tested via the
+# gsheets-provider test file instead.
 EXPECTED_TOOLS = sorted(
     [
         "compliance.check_suppression",
@@ -53,6 +58,7 @@ EXPECTED_TOOLS = sorted(
         "crm.create_task",
         "email.send_smtp",
         "email.create_draft",
+        "enrich.find_email",
         "prospect.search_people",
         "llm.draft_outreach_email",
         "llm.draft_outreach_email_from_prospect",

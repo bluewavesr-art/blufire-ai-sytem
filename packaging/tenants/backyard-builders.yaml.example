@@ -3,17 +3,21 @@
 # Storm-damage fencing campaign targeting B2B property managers,
 # facilities directors, and HOA administrators in the DFW metro.
 #
-# Daily flow:
-#   06:00 CST cron → Apollo search → enrich → de-dup against the
-#   "Leads" worksheet → write new leads to "Leads" → draft emails →
-#   append to "Drafts" worksheet for Backyard to copy/send manually.
+# Pipeline:
+#   06:00 CST cron → Google Places search (commercial property mgmt
+#   in DFW) → for each business:
+#     - has email already?     → suppression / cap → CRM upsert →
+#                                Claude draft → Drafts worksheet
+#     - no email?              → website scrape → if found:
+#                                continue draft path
+#     - still no email but
+#       has phone?             → Call List worksheet (talking-points)
+#     - no email, no phone?    → drop (skipped_unreachable)
 #
-# No SMTP send, no Make.com webhook. Single Google Sheet, two worksheets.
+# No SMTP send, no Make.com webhook. Single Google Sheet, three worksheets:
+#   Leads | Drafts | Call List
 #
-# Replace <<PLACEHOLDER>> values, then install:
-#   sudo BLUFIRE_TENANT_ID=backyard-builders bash install.sh \
-#     --config-from packaging/tenants/backyard-builders.yaml.example \
-#     --env-from packaging/tenants/backyard-builders.env.example
+# Replace <<PLACEHOLDER>> values, then install per the README.
 
 tenant:
   id: "backyard-builders"
@@ -32,7 +36,8 @@ sender:
   physical_address: "<<FULL_MAILING_ADDRESS — required for CAN-SPAM>>"
 
 # Sheets-as-CRM: dedup + new contacts go into the "Leads" worksheet,
-# generated drafts go into the "Drafts" worksheet of the same spreadsheet.
+# generated drafts go into the "Drafts" worksheet, phone-only leads go
+# into the "Call List" worksheet.
 crm:
   provider: "gsheets"
 
@@ -40,47 +45,53 @@ email:
   provider: "gmail"           # not used (we never SMTP-send for this tenant)
   draft_provider: "gsheets"
 
+# Google Places replaces Apollo for this tenant — we want local commercial
+# businesses, not enterprise contacts.
 prospect:
-  provider: "apollo"
+  provider: "gplaces"
+
+# Email enrichment: scrape the prospect's website for mailto: links and
+# obvious info@/contact@ patterns. Falls back to the Call List path if
+# nothing usable is found.
+enrich:
+  provider: "website"
 
 gsheets:
   spreadsheet_url: "<<GOOGLE_SHEET_URL>>"
   leads_worksheet: "Leads"
   drafts_worksheet: "Drafts"
+  call_list_worksheet: "Call List"
 
-# Apollo search criteria for the storm-damage fencing campaign. Two
-# searches so we get a mix of property-management and facilities
-# decision-makers. Keep per_page small — we only want ~10 prospects/day,
-# the orchestrator will dedup heavily.
+# Places search criteria for the storm-damage fencing campaign. Each
+# search runs once per location. ``person_titles`` here means business
+# *types* / search keywords (Places isn't a people directory).
 prospect_searches:
-  - name: "DFW property managers (storm fencing)"
+  - name: "DFW property management offices"
     person_titles:
-      - "Property Manager"
-      - "Regional Property Manager"
-      - "Facilities Manager"
-      - "Director of Operations"
+      - "property management"
+      - "commercial property management"
     locations:
-      - "Fort Worth, Texas, United States"
-      - "Dallas, Texas, United States"
-      - "Arlington, Texas, United States"
-      - "Plano, Texas, United States"
-    industries:
-      - "Real Estate"
-      - "Commercial Real Estate"
-      - "Property Management"
-    per_page: 10
+      - "Fort Worth, TX"
+      - "Dallas, TX"
+      - "Arlington, TX"
+      - "Plano, TX"
+    per_page: 5
 
-  - name: "DFW HOAs / multi-family (storm fencing)"
+  - name: "DFW HOAs / community associations"
     person_titles:
-      - "HOA President"
-      - "Community Manager"
-      - "Director of Maintenance"
+      - "homeowners association"
+      - "community association management"
     locations:
-      - "Fort Worth, Texas, United States"
-      - "Dallas, Texas, United States"
-    industries:
-      - "Property Management"
-      - "Real Estate"
+      - "Fort Worth, TX"
+      - "Dallas, TX"
+    per_page: 5
+
+  - name: "DFW apartment complexes"
+    person_titles:
+      - "apartment complex office"
+    locations:
+      - "Fort Worth, TX"
+      - "Arlington, TX"
     per_page: 5
 
 outreach:

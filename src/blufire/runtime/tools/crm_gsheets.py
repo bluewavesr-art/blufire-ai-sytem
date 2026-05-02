@@ -26,6 +26,8 @@ from blufire.runtime.context import RunContext
 from blufire.runtime.tool import ToolRegistry
 from blufire.runtime.tools._base import BaseTool
 from blufire.runtime.tools.crm import (
+    AppendCallLeadInput,
+    AppendCallLeadOutput,
     ContactRecord,
     CreateContactInput,
     CreateContactOutput,
@@ -197,6 +199,48 @@ class GSheetsCreateTaskTool(BaseTool[CreateTaskInput, CreateTaskOutput]):
         return CreateTaskOutput(task_id=None, created=False, error="not_supported_by_provider")
 
 
+CALL_LIST_COLUMNS = (
+    "created_at",
+    "company",
+    "phone",
+    "address",
+    "city",
+    "state",
+    "website",
+    "talking_points",
+    "status",
+)
+
+
+class GSheetsAppendCallLeadTool(BaseTool[AppendCallLeadInput, AppendCallLeadOutput]):
+    name = "crm.append_call_lead"
+    description = "Append a row to the Call List worksheet for prospects with no email."
+    input_schema = AppendCallLeadInput
+    output_schema = AppendCallLeadOutput
+
+    def invoke(self, ctx: RunContext, payload: AppendCallLeadInput) -> AppendCallLeadOutput:
+        s = ctx.tenant.settings
+        if s.gsheets.spreadsheet_url is None:
+            return AppendCallLeadOutput(appended=False, error="spreadsheet_url_not_configured")
+        client = GSheetsClient(s)
+        row = [
+            datetime.now(UTC).isoformat(timespec="seconds"),
+            payload.company or "",
+            payload.phone or "",
+            payload.address or "",
+            payload.city or "",
+            payload.state or "",
+            payload.website or "",
+            payload.talking_points,
+            "to-call",  # initial status; operator updates to called/scheduled/dead
+        ]
+        try:
+            client.append_row(str(s.gsheets.spreadsheet_url), s.gsheets.call_list_worksheet, row)
+        except GSheetsError as exc:
+            return AppendCallLeadOutput(appended=False, error=type(exc).__name__)
+        return AppendCallLeadOutput(appended=True)
+
+
 def register(tools: ToolRegistry) -> None:
     """Register Google Sheets CRM tools. Called by bootstrap when
     ``settings.crm.provider == "gsheets"``."""
@@ -209,6 +253,7 @@ def register(tools: ToolRegistry) -> None:
         GSheetsUpdateDealTool,
         GSheetsCreateDealTool,
         GSheetsCreateTaskTool,
+        GSheetsAppendCallLeadTool,
     ):
         tool = tool_cls()
         if tools.get(tool.name) is None:

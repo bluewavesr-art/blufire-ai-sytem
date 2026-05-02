@@ -24,16 +24,21 @@ class SearchPeopleInput(BaseModel):
 
 class PersonRecord(BaseModel):
     """Provider-agnostic prospect shape. Implementations map their native
-    record (Apollo Person, ZoomInfo Contact, …) into this shape. The
-    ``raw`` dict carries provider-specific fields the orchestrator may pass
-    through to downstream tools (e.g. organization details for the LLM
-    scorer)."""
+    record (Apollo Person, Google Places business, ZoomInfo Contact, …)
+    into this shape. The ``raw`` dict carries provider-specific fields
+    the orchestrator may pass through to downstream tools (e.g.
+    organization details for the LLM scorer or web-scraper)."""
 
     email: str | None = None
     first_name: str | None = None
     last_name: str | None = None
     title: str | None = None
     company: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    website: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -81,8 +81,15 @@ EMAIL_DRAFT_PROVIDERS: dict[str, str] = {
 
 PROSPECT_PROVIDERS: dict[str, str] = {
     "apollo": "blufire.runtime.tools.prospect_apollo",
+    "gplaces": "blufire.runtime.tools.prospect_gplaces",
     # "zoominfo":    "blufire.runtime.tools.prospect_zoominfo",
     # "lusha":       "blufire.runtime.tools.prospect_lusha",
+}
+
+ENRICH_PROVIDERS: dict[str, str] = {
+    "website": "blufire.runtime.tools.enrich_website",
+    # "hunter": "blufire.runtime.tools.enrich_hunter",
+    # "apollo": "blufire.runtime.tools.enrich_apollo",
 }
 
 
@@ -151,6 +158,7 @@ DAILY_LEADGEN_CAPABILITY = Capability(
     name="daily_lead_gen.run",
     tool_names=(
         "prospect.search_people",
+        "enrich.find_email",
         "crm.search_contacts",
         "compliance.check_suppression",
         "compliance.check_send_cap",
@@ -159,6 +167,7 @@ DAILY_LEADGEN_CAPABILITY = Capability(
         "compliance.build_footer",
         "compliance.record_consent",
         "email.create_draft",
+        "crm.append_call_lead",
     ),
     required=True,
 )
@@ -259,6 +268,12 @@ def bootstrap(
         "PROSPECT_PROVIDERS",
         settings.prospect.provider,
         PROSPECT_PROVIDERS,
+    )(tools)
+    _load_provider_register(
+        "enrich.provider",
+        "ENRICH_PROVIDERS",
+        settings.enrich.provider,
+        ENRICH_PROVIDERS,
     )(tools)
 
     capabilities.register(EMAIL_OUTREACH_CAPABILITY)
