@@ -1,0 +1,21 @@
+name: qa-automator
+domain: quality
+type: agent
+version: 1.0.0
+description: Automates quality assurance testing
+capabilities:
+- test_automation
+- regression_testing
+- smoke_testing
+- test_reporting
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

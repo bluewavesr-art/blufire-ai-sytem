@@ -1,0 +1,124 @@
+# Blufire Primary Swarm Configuration
+# 15-agent hierarchical mesh with 3 queens directing 137 specialized agents
+
+name: blufire-primary
+topology: hierarchical_mesh
+version: "1.0.0"
+
+queens:
+  - strategic-queen
+  - tactical-queen
+  - adaptive-queen
+
+domains:
+  sales:
+    queen: strategic-queen
+    agent_count: 15
+    priority: critical
+
+  marketing:
+    queen: strategic-queen
+    agent_count: 12
+    priority: high
+
+  support:
+    queen: tactical-queen
+    agent_count: 10
+    priority: high
+
+  analytics:
+    queen: adaptive-queen
+    agent_count: 10
+    priority: high
+
+  engineering:
+    queen: tactical-queen
+    agent_count: 12
+    priority: critical
+
+  content:
+    queen: adaptive-queen
+    agent_count: 10
+    priority: medium
+
+  research:
+    queen: adaptive-queen
+    agent_count: 8
+    priority: medium
+
+  integration:
+    queen: tactical-queen
+    agent_count: 10
+    priority: critical
+
+  operations:
+    queen: tactical-queen
+    agent_count: 8
+    priority: high
+
+  security:
+    queen: adaptive-queen
+    agent_count: 8
+    priority: critical
+
+  finance:
+    queen: strategic-queen
+    agent_count: 6
+    priority: high
+
+  hr:
+    queen: strategic-queen
+    agent_count: 5
+    priority: medium
+
+  legal:
+    queen: strategic-queen
+    agent_count: 5
+    priority: medium
+
+  product:
+    queen: strategic-queen
+    agent_count: 6
+    priority: high
+
+  devops:
+    queen: tactical-queen
+    agent_count: 6
+    priority: critical
+
+  quality:
+    queen: tactical-queen
+    agent_count: 4
+    priority: high
+
+  data:
+    queen: adaptive-queen
+    agent_count: 6
+    priority: high
+
+  core:
+    queen: tactical-queen
+    agent_count: 6
+    priority: critical
+
+consensus:
+  default_protocol: weighted_voting
+  quorum: 0.67
+  byzantine_tolerance: 0.33
+  queen_vote_weight: 3
+  timeout: 30
+
+coordination:
+  checkpoint_interval: 300
+  max_concurrent: 15
+  task_timeout: 600
+  retry_policy:
+    max_retries: 3
+    backoff: exponential
+    base_delay: 2
+
+communication:
+  protocol: "event_bus"
+  cross_domain: true
+  message_ttl: 3600
+  broadcast_fanout: 5

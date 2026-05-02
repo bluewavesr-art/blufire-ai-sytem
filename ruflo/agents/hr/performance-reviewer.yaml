@@ -1,0 +1,21 @@
+name: performance-reviewer
+domain: hr
+type: agent
+version: 1.0.0
+description: Manages performance review cycles
+capabilities:
+- review_scheduling
+- feedback_collection
+- goal_tracking
+- report_generation
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

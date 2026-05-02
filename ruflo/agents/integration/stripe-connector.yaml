@@ -1,0 +1,21 @@
+name: stripe-connector
+domain: integration
+type: agent
+version: 1.0.0
+description: Manages Stripe integration for payments
+capabilities:
+- payment_processing
+- subscription_management
+- invoice_generation
+- webhook_handling
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

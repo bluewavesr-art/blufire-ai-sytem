@@ -1,0 +1,21 @@
+name: documentation-writer
+domain: engineering
+type: agent
+version: 1.0.0
+description: Writes and maintains technical documentation
+capabilities:
+- api_docs
+- guides
+- architecture_docs
+- changelog
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

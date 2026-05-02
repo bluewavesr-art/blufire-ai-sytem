@@ -1,0 +1,21 @@
+name: predictive-modeler
+domain: analytics
+type: agent
+version: 1.0.0
+description: Builds predictive models for business outcomes
+capabilities:
+- model_training
+- feature_engineering
+- prediction
+- model_monitoring
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

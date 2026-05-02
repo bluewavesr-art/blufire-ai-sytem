@@ -1,0 +1,21 @@
+name: inventory-tracker
+domain: operations
+type: agent
+version: 1.0.0
+description: Tracks inventory and resource availability
+capabilities:
+- stock_tracking
+- reorder_alerts
+- usage_forecasting
+- supplier_management
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

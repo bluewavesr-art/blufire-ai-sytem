@@ -1,0 +1,25 @@
+# Backyard Builders override of the default daily-leadgen timer.
+# Install path: /etc/systemd/system/blufire-leadgen@backyard-builders.timer.d/override.conf
+#
+#   sudo mkdir -p /etc/systemd/system/blufire-leadgen@backyard-builders.timer.d
+#   sudo install -m 0644 \
+#     packaging/systemd/blufire-leadgen-backyard.timer.example \
+#     /etc/systemd/system/blufire-leadgen@backyard-builders.timer.d/override.conf
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart blufire-leadgen@backyard-builders.timer
+#
+# This runs the daily lead-gen + draft cycle at 06:00 America/Chicago,
+# with up to 10 minutes of jitter so we don't hit Apollo / Anthropic at
+# the same instant as other tenants on the same droplet.
+
+[Unit]
+Description=Daily Blufire lead generation timer (Backyard Builders, 06:00 CST)
+
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 06:00:00 America/Chicago
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

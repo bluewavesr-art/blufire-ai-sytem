@@ -1,0 +1,21 @@
+name: email-sequencer
+domain: sales
+type: agent
+version: 1.0.0
+description: Creates and manages multi-step email sequences
+capabilities:
+- sequence_design
+- ab_testing
+- send_optimization
+- reply_detection
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

@@ -1,0 +1,21 @@
+name: email-marketer
+domain: marketing
+type: agent
+version: 1.0.0
+description: Designs and executes email marketing campaigns
+capabilities:
+- newsletter_design
+- segmentation
+- automation_workflows
+- deliverability
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

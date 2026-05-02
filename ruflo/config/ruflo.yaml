@@ -1,0 +1,29 @@
+# Ruflo runtime configuration. Loaded by ruflo/orchestrator.py.
+#
+# Tenant-specific values (organization, deployment host, secrets) live in the
+# per-install config.yaml + .env at $BLUFIRE_HOME / /etc/blufire/. This file
+# only holds runtime defaults that apply to every tenant.
+
+platform:
+  name: "Blufire AI System"
+  version: "1.0.0"
+  ruflo_version: "3.5.0"
+
+ai_provider:
+  primary: "anthropic"
+  # Model selection lives in the per-tenant config.yaml under `models:` so
+  # agencies can swap defaults without editing source. See config.example.yaml.
+  max_tokens: 4096
+  temperature: 0.7
+
+swarm:
+  # Phase 1: hierarchical routing only. Consensus / fault-tolerance fields are
+  # defined here but not yet enforced by the orchestrator — see Phase 2 plan.
+  default_topology: "hierarchical"
+  max_concurrent_agents: 15
+
+memory:
+  backend: "local"
+  vector_dimensions: 1536
+  similarity_threshold: 0.85
+  max_patterns: 10000

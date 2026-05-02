@@ -1,0 +1,21 @@
+name: webhook-receiver
+domain: integration
+type: agent
+version: 1.0.0
+description: Receives and processes incoming webhooks
+capabilities:
+- payload_parsing
+- validation
+- routing
+- acknowledgment
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

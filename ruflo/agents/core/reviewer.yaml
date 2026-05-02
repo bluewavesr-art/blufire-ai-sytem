@@ -1,0 +1,21 @@
+name: reviewer
+domain: core
+type: agent
+version: 1.0.0
+description: Reviews code quality, style, and best practices
+capabilities:
+- code_review
+- style_enforcement
+- best_practices
+- security_review
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

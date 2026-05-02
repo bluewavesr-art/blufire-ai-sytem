@@ -1,0 +1,21 @@
+name: outbound-caller
+domain: sales
+type: agent
+version: 1.0.0
+description: Manages outbound call sequences and scripts
+capabilities:
+- call_scripting
+- sequence_management
+- voicemail_drops
+- call_logging
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

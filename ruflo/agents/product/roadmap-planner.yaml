@@ -1,0 +1,21 @@
+name: roadmap-planner
+domain: product
+type: agent
+version: 1.0.0
+description: Plans and maintains product roadmaps
+capabilities:
+- timeline_planning
+- dependency_mapping
+- milestone_tracking
+- stakeholder_communication
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

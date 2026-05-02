@@ -1,0 +1,21 @@
+name: workflow-automator
+domain: operations
+type: agent
+version: 1.0.0
+description: Automates business workflows and processes
+capabilities:
+- workflow_design
+- trigger_management
+- condition_evaluation
+- action_execution
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

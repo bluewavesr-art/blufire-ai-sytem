@@ -1,0 +1,21 @@
+name: refactoring-agent
+domain: engineering
+type: agent
+version: 1.0.0
+description: Identifies and executes code refactoring opportunities
+capabilities:
+- code_analysis
+- pattern_detection
+- safe_refactoring
+- test_preservation
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

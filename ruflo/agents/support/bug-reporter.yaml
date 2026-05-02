@@ -1,0 +1,21 @@
+name: bug-reporter
+domain: support
+type: agent
+version: 1.0.0
+description: Collects bug reports and creates structured tickets
+capabilities:
+- bug_collection
+- reproduction_steps
+- priority_classification
+- assignment
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

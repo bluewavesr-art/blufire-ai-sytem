@@ -1,0 +1,21 @@
+name: encryption-manager
+domain: security
+type: agent
+version: 1.0.0
+description: Manages encryption keys and data protection
+capabilities:
+- key_management
+- encryption_policy
+- certificate_management
+- rotation_scheduling
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

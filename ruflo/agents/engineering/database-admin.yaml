@@ -1,0 +1,21 @@
+name: database-admin
+domain: engineering
+type: agent
+version: 1.0.0
+description: Manages database schemas, queries, and optimization
+capabilities:
+- schema_design
+- query_optimization
+- migration
+- backup
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

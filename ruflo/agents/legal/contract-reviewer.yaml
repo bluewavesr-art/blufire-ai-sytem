@@ -1,0 +1,21 @@
+name: contract-reviewer
+domain: legal
+type: agent
+version: 1.0.0
+description: Reviews contracts for risk and compliance
+capabilities:
+- clause_analysis
+- risk_identification
+- redline_suggestions
+- compliance_check
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

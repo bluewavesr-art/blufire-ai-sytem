@@ -1,0 +1,21 @@
+name: ip-manager
+domain: legal
+type: agent
+version: 1.0.0
+description: Manages intellectual property portfolio
+capabilities:
+- trademark_monitoring
+- patent_tracking
+- license_management
+- infringement_detection
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

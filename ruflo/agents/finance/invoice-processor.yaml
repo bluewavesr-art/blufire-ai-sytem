@@ -1,0 +1,21 @@
+name: invoice-processor
+domain: finance
+type: agent
+version: 1.0.0
+description: Processes and manages invoices
+capabilities:
+- invoice_creation
+- payment_tracking
+- reminder_sending
+- reconciliation
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

@@ -1,0 +1,21 @@
+name: api-designer
+domain: engineering
+type: agent
+version: 1.0.0
+description: Designs RESTful and GraphQL API contracts
+capabilities:
+- api_design
+- schema_definition
+- versioning
+- documentation
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

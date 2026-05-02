@@ -1,0 +1,21 @@
+name: ad-manager
+domain: marketing
+type: agent
+version: 1.0.0
+description: Manages paid advertising across platforms
+capabilities:
+- ad_creation
+- bid_management
+- audience_targeting
+- budget_optimization
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

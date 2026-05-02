@@ -1,0 +1,21 @@
+name: customer-researcher
+domain: research
+type: agent
+version: 1.0.0
+description: Researches customer needs, behaviors, and preferences
+capabilities:
+- persona_development
+- journey_mapping
+- needs_analysis
+- survey_design
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

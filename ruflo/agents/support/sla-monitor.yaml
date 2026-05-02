@@ -1,0 +1,21 @@
+name: sla-monitor
+domain: support
+type: agent
+version: 1.0.0
+description: Monitors SLA compliance and alerts on violations
+capabilities:
+- sla_tracking
+- violation_alerts
+- performance_reporting
+- threshold_management
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

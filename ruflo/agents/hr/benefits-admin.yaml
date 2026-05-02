@@ -1,0 +1,21 @@
+name: benefits-admin
+domain: hr
+type: agent
+version: 1.0.0
+description: Administers employee benefits programs
+capabilities:
+- enrollment_management
+- plan_comparison
+- eligibility_tracking
+- provider_coordination
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3

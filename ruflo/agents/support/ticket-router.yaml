@@ -1,0 +1,21 @@
+name: ticket-router
+domain: support
+type: agent
+version: 1.0.0
+description: Routes support tickets to appropriate agents or teams
+capabilities:
+- ticket_classification
+- priority_assignment
+- skill_based_routing
+- escalation
+max_tokens: 4096
+temperature: 0.7
+execution:
+  timeout: 300
+  retry:
+    max_attempts: 3
+    backoff: exponential
+  concurrency: 1
+health_check:
+  interval: 60
+  max_failures: 3
