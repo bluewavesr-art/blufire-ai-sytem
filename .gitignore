@@ -26,6 +26,18 @@ todos/
 history.jsonl
 mcp-needs-auth-cache.json
 
+# Python environment & build artifacts
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
