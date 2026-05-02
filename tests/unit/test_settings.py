@@ -158,3 +158,32 @@ outreach:
     settings = load_settings(cfg)
     assert len(settings.prospect_searches) == 1
     assert str(settings.outreach.webhook.gmail_draft_url) == "https://hook.example.com/x"
+
+
+def test_tenant_env_file_loaded_from_config_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Secrets in <config_stem>.env are picked up when load_settings is given
+    the explicit config path — the installer writes backyard-builders.env next
+    to backyard-builders.yaml and the loader must find it."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("BLUFIRE_CONFIG", raising=False)
+
+    cfg = tmp_path / "backyard-builders.yaml"
+    env = tmp_path / "backyard-builders.env"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+""".strip()
+    )
+    env.write_text("ANTHROPIC_API_KEY=sk-test-key\n")
+
+    settings = load_settings(cfg)
+    assert settings.secrets.anthropic_api_key is not None
+    assert settings.secrets.anthropic_api_key.get_secret_value() == "sk-test-key"

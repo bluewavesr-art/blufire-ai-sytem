@@ -266,10 +266,17 @@ def _candidate_config_paths(explicit: Path | None) -> list[Path]:
     return candidates
 
 
-def _candidate_env_paths() -> list[Path]:
+def _candidate_env_paths(config_path: Path | None = None) -> list[Path]:
     candidates: list[Path] = []
     if home := os.environ.get("BLUFIRE_HOME"):
         candidates.append(Path(home) / ".env")
+    # Tenant-specific .env: same dir + stem as the config yaml.
+    # Works for both explicit paths and $BLUFIRE_CONFIG.
+    cfg = config_path or (
+        Path(os.environ["BLUFIRE_CONFIG"]) if "BLUFIRE_CONFIG" in os.environ else None
+    )
+    if cfg is not None:
+        candidates.append(Path(cfg).with_suffix(".env"))
     candidates.append(Path("/etc/blufire/.env"))
     candidates.append(Path.cwd() / ".env")
     return candidates
@@ -296,7 +303,7 @@ def _interpolate(value: Any, env: dict[str, str]) -> Any:
 
 def load_settings(config_path: Path | None = None) -> Settings:
     """Load settings from disk. Loads .env files first so YAML interpolation can use them."""
-    for env_file in _candidate_env_paths():
+    for env_file in _candidate_env_paths(config_path):
         if env_file.is_file():
             load_dotenv(env_file, override=False)
 
