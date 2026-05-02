@@ -205,6 +205,19 @@ class _Secrets(BaseSettings):
     gsheets_credentials_path: Path | None = None
     gplaces_api_key: SecretStr | None = None
 
+    @field_validator(
+        "make_draft_webhook_url", "unsubscribe_base_url", mode="before"
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v: object) -> object:
+        """Treat empty-string env var values as absent (None).
+        Operators commonly leave placeholder lines like UNSUBSCRIBE_BASE_URL=""
+        in .env files; pydantic-settings passes the empty string through and
+        the URL validator then rejects it."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
 
 class Settings(BaseModel):
     tenant: TenantConfig
