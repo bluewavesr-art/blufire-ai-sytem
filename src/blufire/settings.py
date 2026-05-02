@@ -225,13 +225,18 @@ class Settings(BaseModel):
     @model_validator(mode="after")
     def _require_webhook_when_prospects_configured(self) -> Settings:
         # If the install has prospect searches defined, the daily-leadgen flow
-        # WILL run; refuse to load if no webhook target is configured. Prevents
-        # a silent runtime failure later.
-        if self.prospect_searches and self.outreach.webhook.gmail_draft_url is None:
+        # WILL run; refuse to load if its draft sink is unreachable. Only the
+        # make_webhook draft provider needs a webhook URL — gsheets and others
+        # have their own sink config validated elsewhere.
+        if (
+            self.prospect_searches
+            and self.email.draft_provider == "make_webhook"
+            and self.outreach.webhook.gmail_draft_url is None
+        ):
             raise ValueError(
-                "prospect_searches are configured but outreach.webhook.gmail_draft_url "
-                "is empty. Set MAKE_DRAFT_WEBHOOK_URL in .env or "
-                "outreach.webhook.gmail_draft_url in config.yaml."
+                "prospect_searches are configured with email.draft_provider='make_webhook' "
+                "but outreach.webhook.gmail_draft_url is empty. Set MAKE_DRAFT_WEBHOOK_URL "
+                "in .env or outreach.webhook.gmail_draft_url in config.yaml."
             )
         return self
 
