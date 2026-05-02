@@ -37,7 +37,7 @@ DEFAULT_DETAIL_FIELDS = (
     "formatted_phone_number",
     "website",
     "business_status",
-    "types",
+    "type",
     "place_id",
 )
 
