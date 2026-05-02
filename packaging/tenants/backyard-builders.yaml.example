@@ -1,0 +1,125 @@
+# Blufire tenant config for Backyard Builders (Fort Worth, TX).
+#
+# Storm-damage fencing campaign targeting B2B property managers,
+# facilities directors, and HOA administrators in the DFW metro.
+#
+# Pipeline:
+#   06:00 CST cron → Google Places search (commercial property mgmt
+#   in DFW) → for each business:
+#     - has email already?     → suppression / cap → CRM upsert →
+#                                Claude draft → Drafts worksheet
+#     - no email?              → website scrape → if found:
+#                                continue draft path
+#     - still no email but
+#       has phone?             → Call List worksheet (talking-points)
+#     - no email, no phone?    → drop (skipped_unreachable)
+#
+# No SMTP send, no Make.com webhook. Single Google Sheet, three worksheets:
+#   Leads | Drafts | Call List
+#
+# Replace <<PLACEHOLDER>> values, then install per the README.
+
+tenant:
+  id: "backyard-builders"
+  display_name: "Backyard Builders"
+  timezone: "America/Chicago"
+
+paths:
+  data_dir: "/var/lib/blufire/backyard-builders"
+  log_dir: "/var/log/blufire/backyard-builders"
+
+sender:
+  name: "<<SENDER_NAME — e.g. Mike at Backyard Builders>>"
+  company: "Backyard Builders"
+  email: "<<SENDER_EMAIL — e.g. mike@backyardbuildersdfw.com>>"
+  reply_to: null
+  physical_address: "<<FULL_MAILING_ADDRESS — required for CAN-SPAM>>"
+
+# Sheets-as-CRM: dedup + new contacts go into the "Leads" worksheet,
+# generated drafts go into the "Drafts" worksheet, phone-only leads go
+# into the "Call List" worksheet.
+crm:
+  provider: "gsheets"
+
+email:
+  provider: "gmail"           # not used (we never SMTP-send for this tenant)
+  draft_provider: "gsheets"
+
+# Google Places replaces Apollo for this tenant — we want local commercial
+# businesses, not enterprise contacts.
+prospect:
+  provider: "gplaces"
+
+# Email enrichment: scrape the prospect's website for mailto: links and
+# obvious info@/contact@ patterns. Falls back to the Call List path if
+# nothing usable is found.
+enrich:
+  provider: "website"
+
+gsheets:
+  spreadsheet_url: "<<GOOGLE_SHEET_URL>>"
+  leads_worksheet: "Leads"
+  drafts_worksheet: "Drafts"
+  call_list_worksheet: "Call List"
+
+# Places search criteria for the storm-damage fencing campaign. Each
+# search runs once per location. ``person_titles`` here means business
+# *types* / search keywords (Places isn't a people directory).
+prospect_searches:
+  - name: "DFW property management offices"
+    person_titles:
+      - "property management"
+      - "commercial property management"
+    locations:
+      - "Fort Worth, TX"
+      - "Dallas, TX"
+      - "Arlington, TX"
+      - "Plano, TX"
+    per_page: 5
+
+  - name: "DFW HOAs / community associations"
+    person_titles:
+      - "homeowners association"
+      - "community association management"
+    locations:
+      - "Fort Worth, TX"
+      - "Dallas, TX"
+    per_page: 5
+
+  - name: "DFW apartment complexes"
+    person_titles:
+      - "apartment complex office"
+    locations:
+      - "Fort Worth, TX"
+      - "Arlington, TX"
+    per_page: 5
+
+outreach:
+  daily_send_cap: 10
+  per_domain_daily_cap: 1
+  send_window:
+    start: "08:00:00"
+    end: "17:00:00"
+    days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+  system_prompt_path: "/etc/blufire/backyard-builders.system-prompt.txt"
+  webhook:
+    gmail_draft_url: null     # not used; draft_provider is gsheets
+
+compliance:
+  unsubscribe_base_url: "<<https://unsub.your-domain.com — optional but recommended>>"
+  legal_basis: "legitimate_interest"   # B2B cold outreach to property managers
+  jurisdiction: ["US"]
+  exclude_eea: true
+  run_unsubscribe_server: false
+
+logging:
+  level: "INFO"
+  format: "json"
+  file: "/var/log/blufire/backyard-builders/blufire.log"
+  rotate_max_bytes: 52428800
+  rotate_backup_count: 10
+
+models:
+  default: "claude-sonnet-4-20250514"
+  drafting: "claude-sonnet-4-20250514"
+  scoring: "claude-haiku-4-5-20251001"

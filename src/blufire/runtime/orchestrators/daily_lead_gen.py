@@ -2,17 +2,20 @@
 
 Mirrors the Phase 1 logic in ``src/blufire/agents/daily_lead_gen.py`` but
 routes every external call through the ToolRegistry. Differs from the
-other Phase 2 orchestrators:
+other Phase 2 orchestrators in two important ways:
 
-* The final delivery is a *draft* (``email.create_draft``) for human
-  review, not a send. No SMTP. No List-Unsubscribe headers (those go
-  on the actual outbound email, not on the draft preview).
-* Multiple ``ProspectSearch`` configs run in sequence (different titles
-  / locations / industries), with intra-run deduplication so the same
-  prospect doesn't get drafted twice in a single run.
+* **The final delivery is a draft for human review, not a send.** No
+  SMTP. No List-Unsubscribe headers (those go on the actual outbound
+  email, not on the draft preview).
+* **Bifurcation by email availability.** Some prospect providers
+  (Google Places) return businesses without a contact email. We attempt
+  enrichment via ``enrich.find_email``; if that fails too, the lead is
+  routed to a "Call List" sink (via ``crm.append_call_lead``) so the
+  team can phone them instead of letting the lead fall on the floor.
 
-Compliance gating still applies — every draft passes through suppression,
-send-caps, and consent recording before reaching the webhook.
+Compliance gating still applies to every email path — every draft
+passes through suppression, send-caps, and consent recording before
+reaching the webhook.
 """
 
 from __future__ import annotations
@@ -30,10 +33,15 @@ from blufire.runtime.tools.compliance import (
     CheckSuppressionInput,
     RecordConsentInput,
 )
-from blufire.runtime.tools.crm import CreateContactInput, SearchContactsInput
+from blufire.runtime.tools.crm import (
+    AppendCallLeadInput,
+    CreateContactInput,
+    SearchContactsInput,
+)
 from blufire.runtime.tools.email import CreateDraftInput
+from blufire.runtime.tools.enrich import FindEmailInput
 from blufire.runtime.tools.llm import DraftOutreachFromProspectInput
-from blufire.runtime.tools.prospect import SearchPeopleInput
+from blufire.runtime.tools.prospect import PersonRecord, SearchPeopleInput
 from blufire.settings import ProspectSearch
 
 DRAFT_SOURCE = "daily-leadgen.draft.via-capability"
@@ -48,25 +56,38 @@ def _required(registry: ToolRegistry, name: str) -> Tool[Any, Any]:
     return tool
 
 
-def _hubspot_props_from_apollo(person: dict[str, Any]) -> dict[str, Any]:
-    org = person.get("organization") or {}
-    props: dict[str, Any] = {
-        "firstname": person.get("first_name", ""),
-        "lastname": person.get("last_name", ""),
-        "email": person.get("email", ""),
-        "company": org.get("name", ""),
-        "jobtitle": person.get("title", ""),
-        "city": person.get("city", ""),
-        "state": person.get("state", ""),
-        "lifecyclestage": "lead",
-        "hs_lead_status": "NEW",
+def _person_props_for_crm(person: PersonRecord) -> dict[str, Any]:
+    """Map a normalized PersonRecord into the CRM's create_contact properties.
+    Provider-agnostic — no Apollo or Places specifics."""
+    return {
+        "email": person.email or "",
+        "first_name": person.first_name or "",
+        "last_name": person.last_name or "",
+        "company": person.company or "",
+        "title": person.title or "",
+        "phone": person.phone or "",
+        "address": person.address or "",
+        "city": person.city or "",
+        "state": person.state or "",
+        "status": "new",
     }
-    phones = person.get("phone_numbers") or []
-    if phones and isinstance(phones[0], dict):
-        sanitized = phones[0].get("sanitized_number")
-        if sanitized:
-            props["phone"] = sanitized
-    return props
+
+
+def _talking_points(person: PersonRecord) -> str:
+    """One-line opener hint for the call-list sheet. Deterministic — no
+    LLM call. The team can always rewrite, but a starter line beats a
+    blank cell."""
+    bits = []
+    if person.company:
+        bits.append(person.company)
+    if person.city or person.state:
+        loc = ", ".join(p for p in [person.city, person.state] if p)
+        bits.append(f"in {loc}")
+    head = " ".join(bits) if bits else "this prospect"
+    return (
+        f"Storm-damage fence inspection / repair pitch for {head}. "
+        "Free on-site assessment, fast quote, insurance-claim-friendly paperwork."
+    )
 
 
 def run(
@@ -80,8 +101,8 @@ def run(
 ) -> dict[str, int]:
     """Run the daily_lead_gen capability via the tool registry.
 
-    Returns the same counter dict shape as the Phase 1 module so test
-    suites can assert parity.
+    Returns a counter dict including the new ``routed_to_call_list`` and
+    ``enriched_email_found`` counters alongside the legacy ones.
     """
     registry = registry or default_registry
     log = ctx.log.bind(via="capability", agent=blueprint.name)
@@ -101,7 +122,9 @@ def run(
 
     counters: dict[str, int] = {
         "fetched": 0,
-        "skipped_no_email": 0,
+        "enriched_email_found": 0,
+        "routed_to_call_list": 0,
+        "skipped_unreachable": 0,  # no email AND no phone
         "skipped_existing": 0,
         "skipped_suppressed": 0,
         "skipped_capped": 0,
@@ -109,14 +132,13 @@ def run(
         "errors": 0,
     }
 
-    new_prospects: list[dict[str, Any]] = []
-    seen_emails: set[str] = set()
+    # Phase 1: discovery. Collect normalized PersonRecords, dedup by
+    # whatever identifier is available (email if present, else company+phone).
+    discovered: list[PersonRecord] = []
+    seen_keys: set[str] = set()
 
     log.info("daily_leadgen_start", search_count=len(searches))
 
-    # Phase 1: discovery + filter loop. We do NOT call the drafter or the
-    # webhook here — drafting is expensive (Claude tokens) and we want to
-    # apply every cheap filter (dedup, suppression, caps) first.
     for search in searches:
         search_out = tools["prospect.search_people"].invoke(
             ctx,
@@ -130,54 +152,89 @@ def run(
         )
         for person in search_out.people:
             counters["fetched"] += 1
-            email = (person.email or "").strip().lower()
-            if not email:
-                counters["skipped_no_email"] += 1
+            key = (person.email or f"{person.company or ''}|{person.phone or ''}").lower().strip()
+            if not key or key == "|":
+                # Truly empty record; nothing to do.
+                counters["skipped_unreachable"] += 1
                 continue
-            if email in seen_emails:
+            if key in seen_keys:
                 continue
-            seen_emails.add(email)
-
-            rec_log = log.bind(recipient_hash=hash_recipient(email))
-
-            existing = tools["crm.search_contacts"].invoke(ctx, SearchContactsInput(email=email))
-            if existing.contacts:
-                rec_log.info("skip_already_in_crm")
-                counters["skipped_existing"] += 1
-                continue
-
-            sup = tools["compliance.check_suppression"].invoke(
-                ctx, CheckSuppressionInput(email=email)
-            )
-            if sup.suppressed:
-                rec_log.info("skip_suppressed")
-                counters["skipped_suppressed"] += 1
-                continue
-
-            cap_out = tools["compliance.check_send_cap"].invoke(ctx, CheckSendCapInput(email=email))
-            if not cap_out.allowed:
-                rec_log.info("skip_capped", reason=cap_out.reason)
-                counters["skipped_capped"] += 1
-                continue
-
-            new_prospects.append(person.raw)
-
+            seen_keys.add(key)
+            discovered.append(person)
         if sleep_between_searches > 0:
             time.sleep(sleep_between_searches)
 
-    log.info("daily_leadgen_filtered", to_process=len(new_prospects), **counters)
+    log.info("daily_leadgen_discovered", discovered=len(discovered))
 
-    # Phase 2: per-survivor draft + webhook. Each iteration is independent;
-    # a failure here only affects that one prospect.
-    for person in new_prospects:
-        email = (person.get("email") or "").strip().lower()
+    # Phase 2: per-prospect routing.
+    for person in discovered:
+        # Try enrichment if no email AND we have a website to scrape.
+        if not person.email and person.website:
+            try:
+                enriched = tools["enrich.find_email"].invoke(
+                    ctx, FindEmailInput(website_url=person.website)
+                )
+            except Exception as exc:
+                log.warning(
+                    "enrich_failed",
+                    error_class=type(exc).__name__,
+                    company=person.company,
+                )
+                enriched = None
+            if enriched and enriched.email:
+                counters["enriched_email_found"] += 1
+                # Mutate the working copy — keep the rest of the record intact.
+                person = person.model_copy(update={"email": enriched.email})
+
+        # No email after enrichment → call-list path.
+        if not person.email:
+            if not person.phone:
+                counters["skipped_unreachable"] += 1
+                continue
+            call_out = tools["crm.append_call_lead"].invoke(
+                ctx,
+                AppendCallLeadInput(
+                    company=person.company,
+                    phone=person.phone,
+                    address=person.address,
+                    city=person.city,
+                    state=person.state,
+                    website=person.website,
+                    talking_points=_talking_points(person),
+                ),
+            )
+            if call_out.appended:
+                counters["routed_to_call_list"] += 1
+            else:
+                log.warning("call_list_append_failed", error_class=call_out.error)
+                counters["errors"] += 1
+            continue
+
+        # Email path: dedup → suppression → cap → CRM upsert → draft → sink.
+        email = person.email.strip().lower()
         rec_log = log.bind(recipient_hash=hash_recipient(email))
 
-        # Best-effort CRM upsert. The dedup query above already proved this
-        # email isn't in the CRM, but a 409 is still possible if a parallel
-        # process raced us; treat that as already-existed and continue.
+        existing = tools["crm.search_contacts"].invoke(ctx, SearchContactsInput(email=email))
+        if existing.contacts:
+            rec_log.info("skip_already_in_crm")
+            counters["skipped_existing"] += 1
+            continue
+
+        sup = tools["compliance.check_suppression"].invoke(ctx, CheckSuppressionInput(email=email))
+        if sup.suppressed:
+            rec_log.info("skip_suppressed")
+            counters["skipped_suppressed"] += 1
+            continue
+
+        cap_out = tools["compliance.check_send_cap"].invoke(ctx, CheckSendCapInput(email=email))
+        if not cap_out.allowed:
+            rec_log.info("skip_capped", reason=cap_out.reason)
+            counters["skipped_capped"] += 1
+            continue
+
+        # Best-effort CRM upsert.
         create_out = tools["crm.create_contact"].invoke(
-            ctx, CreateContactInput(properties=_hubspot_props_from_apollo(person))
+            ctx, CreateContactInput(properties=_person_props_for_crm(person))
         )
         if create_out.already_existed:
             rec_log.info("crm_contact_existed_at_create")
@@ -185,7 +242,7 @@ def run(
         try:
             draft = tools["llm.draft_outreach_email_from_prospect"].invoke(
                 ctx,
-                DraftOutreachFromProspectInput(person=person, system_prompt=system_prompt),
+                DraftOutreachFromProspectInput(person=person.raw, system_prompt=system_prompt),
             )
         except Exception as exc:
             rec_log.warning("draft_failed", error_class=type(exc).__name__)
@@ -201,15 +258,13 @@ def run(
                 email=email,
                 basis=settings.compliance.legal_basis,
                 source=DRAFT_SOURCE,
-                evidence=person,
+                evidence=person.raw,
             ),
         )
 
         # Note: list_unsubscribe is intentionally NOT passed to create_draft.
-        # The List-Unsubscribe header belongs on the outbound message that
-        # the human eventually sends, not on the draft preview the webhook
-        # shows them. The footer (which carries the unsubscribe link) is
-        # already in the body.
+        # The List-Unsubscribe header belongs on the outbound message the
+        # human eventually sends, not on the draft preview the sink shows.
         out = tools["email.create_draft"].invoke(
             ctx,
             CreateDraftInput(
@@ -221,7 +276,7 @@ def run(
         if out.created:
             counters["drafted"] += 1
         else:
-            rec_log.warning("draft_webhook_failed", error_class=out.error)
+            rec_log.warning("draft_sink_failed", error_class=out.error)
             counters["errors"] += 1
 
     log.info("daily_leadgen_done", **counters)

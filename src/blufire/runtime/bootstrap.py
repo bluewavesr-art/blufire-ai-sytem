@@ -56,6 +56,7 @@ from blufire.settings import Settings, get_settings
 # that selects that provider.
 CRM_PROVIDERS: dict[str, str] = {
     "hubspot": "blufire.runtime.tools.crm_hubspot",
+    "gsheets": "blufire.runtime.tools.crm_gsheets",
     # "jobber":      "blufire.runtime.tools.crm_jobber",
     # "acculynx":    "blufire.runtime.tools.crm_acculynx",
     # "servicetitan":"blufire.runtime.tools.crm_servicetitan",
@@ -72,6 +73,7 @@ EMAIL_PROVIDERS: dict[str, str] = {
 
 EMAIL_DRAFT_PROVIDERS: dict[str, str] = {
     "make_webhook": "blufire.runtime.tools.email_make_webhook",
+    "gsheets": "blufire.runtime.tools.email_gsheets",
     # "gmail_api":   "blufire.runtime.tools.email_gmail_api",
     # "outlook_api": "blufire.runtime.tools.email_outlook_api",
     # "ghl":         "blufire.runtime.tools.email_ghl_draft",
@@ -79,8 +81,15 @@ EMAIL_DRAFT_PROVIDERS: dict[str, str] = {
 
 PROSPECT_PROVIDERS: dict[str, str] = {
     "apollo": "blufire.runtime.tools.prospect_apollo",
+    "gplaces": "blufire.runtime.tools.prospect_gplaces",
     # "zoominfo":    "blufire.runtime.tools.prospect_zoominfo",
     # "lusha":       "blufire.runtime.tools.prospect_lusha",
+}
+
+ENRICH_PROVIDERS: dict[str, str] = {
+    "website": "blufire.runtime.tools.enrich_website",
+    # "hunter": "blufire.runtime.tools.enrich_hunter",
+    # "apollo": "blufire.runtime.tools.enrich_apollo",
 }
 
 
@@ -149,6 +158,7 @@ DAILY_LEADGEN_CAPABILITY = Capability(
     name="daily_lead_gen.run",
     tool_names=(
         "prospect.search_people",
+        "enrich.find_email",
         "crm.search_contacts",
         "compliance.check_suppression",
         "compliance.check_send_cap",
@@ -157,6 +167,7 @@ DAILY_LEADGEN_CAPABILITY = Capability(
         "compliance.build_footer",
         "compliance.record_consent",
         "email.create_draft",
+        "crm.append_call_lead",
     ),
     required=True,
 )
@@ -257,6 +268,12 @@ def bootstrap(
         "PROSPECT_PROVIDERS",
         settings.prospect.provider,
         PROSPECT_PROVIDERS,
+    )(tools)
+    _load_provider_register(
+        "enrich.provider",
+        "ENRICH_PROVIDERS",
+        settings.enrich.provider,
+        ENRICH_PROVIDERS,
     )(tools)
 
     capabilities.register(EMAIL_OUTREACH_CAPABILITY)

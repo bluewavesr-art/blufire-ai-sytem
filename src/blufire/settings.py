@@ -109,10 +109,19 @@ class WebhookConfig(BaseModel):
 # tenant typically sets ``crm.provider=ghl`` AND ``email.provider=ghl``.
 # The provider modules are independent — register() is called for whichever
 # is configured.
-CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl"]
+CrmProvider = Literal["hubspot", "jobber", "acculynx", "servicetitan", "ghl", "gsheets"]
 EmailProvider = Literal["gmail", "mailgun", "sendgrid", "ses", "ghl"]
-EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl"]
-ProspectProvider = Literal["apollo", "zoominfo", "lusha"]
+EmailDraftProvider = Literal["make_webhook", "gmail_api", "outlook_api", "ghl", "gsheets"]
+ProspectProvider = Literal["apollo", "gplaces", "zoominfo", "lusha"]
+EnrichProvider = Literal["website", "hunter", "apollo"]
+
+
+class EnrichConfig(BaseModel):
+    """Email-enrichment provider used after the prospect search returns a
+    lead with no email. Set to ``"website"`` to scrape the lead's website
+    for ``mailto:`` links and obvious email patterns."""
+
+    provider: EnrichProvider = "website"
 
 
 class CrmConfig(BaseModel):
@@ -135,6 +144,23 @@ class EmailConfig(BaseModel):
 
 class ProspectConfig(BaseModel):
     provider: ProspectProvider = "apollo"
+
+
+class GSheetsConfig(BaseModel):
+    """Sheet-as-CRM configuration. Used when ``crm.provider == "gsheets"``
+    and/or ``email.draft_provider == "gsheets"``.
+
+    The ``leads_*`` worksheet is the source-of-truth for contacts (dedup
+    via ``crm.search_contacts``, append via ``crm.create_contact``). The
+    ``drafts_*`` worksheet is where ``email.create_draft`` appends new
+    drafts for human review. The ``call_list_*`` worksheet is where the
+    daily_lead_gen orchestrator routes leads with no email so the team
+    can phone them instead."""
+
+    spreadsheet_url: HttpUrl | None = None
+    leads_worksheet: str = "Leads"
+    drafts_worksheet: str = "Drafts"
+    call_list_worksheet: str = "Call List"
 
 
 class OutreachConfig(BaseModel):
@@ -176,6 +202,21 @@ class _Secrets(BaseSettings):
     unsubscribe_base_url: HttpUrl | None = None
     blufire_license_key: SecretStr | None = None
     sentry_dsn: str | None = None
+    gsheets_credentials_path: Path | None = None
+    gplaces_api_key: SecretStr | None = None
+
+    @field_validator(
+        "make_draft_webhook_url", "unsubscribe_base_url", mode="before"
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v: object) -> object:
+        """Treat empty-string env var values as absent (None).
+        Operators commonly leave placeholder lines like UNSUBSCRIBE_BASE_URL=""
+        in .env files; pydantic-settings passes the empty string through and
+        the URL validator then rejects it."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class Settings(BaseModel):
@@ -187,6 +228,8 @@ class Settings(BaseModel):
     crm: CrmConfig = CrmConfig()
     email: EmailConfig = EmailConfig()
     prospect: ProspectConfig = ProspectConfig()
+    enrich: EnrichConfig = EnrichConfig()
+    gsheets: GSheetsConfig = GSheetsConfig()
     outreach: OutreachConfig = OutreachConfig()
     compliance: ComplianceConfig = ComplianceConfig()
     logging: LoggingConfig = LoggingConfig()
@@ -195,13 +238,18 @@ class Settings(BaseModel):
     @model_validator(mode="after")
     def _require_webhook_when_prospects_configured(self) -> Settings:
         # If the install has prospect searches defined, the daily-leadgen flow
-        # WILL run; refuse to load if no webhook target is configured. Prevents
-        # a silent runtime failure later.
-        if self.prospect_searches and self.outreach.webhook.gmail_draft_url is None:
+        # WILL run; refuse to load if its draft sink is unreachable. Only the
+        # make_webhook draft provider needs a webhook URL — gsheets and others
+        # have their own sink config validated elsewhere.
+        if (
+            self.prospect_searches
+            and self.email.draft_provider == "make_webhook"
+            and self.outreach.webhook.gmail_draft_url is None
+        ):
             raise ValueError(
-                "prospect_searches are configured but outreach.webhook.gmail_draft_url "
-                "is empty. Set MAKE_DRAFT_WEBHOOK_URL in .env or "
-                "outreach.webhook.gmail_draft_url in config.yaml."
+                "prospect_searches are configured with email.draft_provider='make_webhook' "
+                "but outreach.webhook.gmail_draft_url is empty. Set MAKE_DRAFT_WEBHOOK_URL "
+                "in .env or outreach.webhook.gmail_draft_url in config.yaml."
             )
         return self
 
@@ -231,10 +279,17 @@ def _candidate_config_paths(explicit: Path | None) -> list[Path]:
     return candidates
 
 
-def _candidate_env_paths() -> list[Path]:
+def _candidate_env_paths(config_path: Path | None = None) -> list[Path]:
     candidates: list[Path] = []
     if home := os.environ.get("BLUFIRE_HOME"):
         candidates.append(Path(home) / ".env")
+    # Tenant-specific .env: same dir + stem as the config yaml.
+    # Works for both explicit paths and $BLUFIRE_CONFIG.
+    cfg = config_path or (
+        Path(os.environ["BLUFIRE_CONFIG"]) if "BLUFIRE_CONFIG" in os.environ else None
+    )
+    if cfg is not None:
+        candidates.append(Path(cfg).with_suffix(".env"))
     candidates.append(Path("/etc/blufire/.env"))
     candidates.append(Path.cwd() / ".env")
     return candidates
@@ -261,7 +316,7 @@ def _interpolate(value: Any, env: dict[str, str]) -> Any:
 
 def load_settings(config_path: Path | None = None) -> Settings:
     """Load settings from disk. Loads .env files first so YAML interpolation can use them."""
-    for env_file in _candidate_env_paths():
+    for env_file in _candidate_env_paths(config_path):
         if env_file.is_file():
             load_dotenv(env_file, override=False)
 

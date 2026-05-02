@@ -107,6 +107,35 @@ prospect_searches:
         load_settings(cfg)
 
 
+def test_prospects_with_gsheets_draft_provider_skips_webhook_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gsheets draft sink doesn't need a webhook URL — validator must
+    only fire for draft_provider='make_webhook'."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+email:
+  draft_provider: "gsheets"
+gsheets:
+  spreadsheet_url: "https://docs.google.com/spreadsheets/d/x/edit"
+prospect_searches:
+  - name: "test"
+    per_page: 5
+""".strip()
+    )
+    settings = load_settings(cfg)
+    assert settings.email.draft_provider == "gsheets"
+    assert settings.outreach.webhook.gmail_draft_url is None
+
+
 def test_prospects_with_webhook_accepted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
@@ -129,3 +158,32 @@ outreach:
     settings = load_settings(cfg)
     assert len(settings.prospect_searches) == 1
     assert str(settings.outreach.webhook.gmail_draft_url) == "https://hook.example.com/x"
+
+
+def test_tenant_env_file_loaded_from_config_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Secrets in <config_stem>.env are picked up when load_settings is given
+    the explicit config path — the installer writes backyard-builders.env next
+    to backyard-builders.yaml and the loader must find it."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("BLUFIRE_CONFIG", raising=False)
+
+    cfg = tmp_path / "backyard-builders.yaml"
+    env = tmp_path / "backyard-builders.env"
+    cfg.write_text(
+        f"""
+tenant: {{id: "t", display_name: "T"}}
+paths: {{data_dir: "{tmp_path}/d", log_dir: "{tmp_path}/l"}}
+sender:
+  name: "N"
+  company: "C"
+  email: "n@example.com"
+  physical_address: "1 Test Way, City, ST 00000"
+""".strip()
+    )
+    env.write_text("ANTHROPIC_API_KEY=sk-test-key\n")
+
+    settings = load_settings(cfg)
+    assert settings.secrets.anthropic_api_key is not None
+    assert settings.secrets.anthropic_api_key.get_secret_value() == "sk-test-key"

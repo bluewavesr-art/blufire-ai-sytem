@@ -136,12 +136,48 @@ def _cmd_doctor(args: argparse.Namespace, settings: Settings) -> int:
     """Report config + secret + path readiness without exposing values."""
     log = get_logger("blufire.doctor")
     issues = 0
-    for name in ("hubspot_api_key", "anthropic_api_key", "apollo_api_key", "gmail_app_password"):
+
+    def require(name: str) -> None:
+        nonlocal issues
         if getattr(settings.secrets, name) is None:
             log.error("secret_missing", key=name.upper())
             issues += 1
-    if not settings.secrets.gmail_user:
-        log.warning("optional_missing", key="GMAIL_USER")
+
+    def warn_missing(name: str) -> None:
+        if not getattr(settings.secrets, name, None):
+            log.warning("optional_missing", key=name.upper())
+
+    # Always required.
+    require("anthropic_api_key")
+
+    # CRM-provider-specific secrets.
+    if settings.crm.provider == "hubspot":
+        require("hubspot_api_key")
+    elif settings.crm.provider == "gsheets":
+        if settings.secrets.gsheets_credentials_path is None:
+            log.error("secret_missing", key="GSHEETS_CREDENTIALS_PATH")
+            issues += 1
+        elif not settings.secrets.gsheets_credentials_path.is_file():
+            log.error("secret_file_missing", path=str(settings.secrets.gsheets_credentials_path))
+            issues += 1
+
+    # Prospect-provider-specific secrets.
+    if settings.prospect.provider == "apollo":
+        require("apollo_api_key")
+    elif settings.prospect.provider == "gplaces":
+        require("gplaces_api_key")
+
+    # Email SMTP secrets — only needed when actually sending (not draft-only).
+    if settings.email.provider == "gmail":
+        require("gmail_app_password")
+        warn_missing("gmail_user")
+
+    # Draft-sink secrets for gsheets (only if not already checked above).
+    if settings.email.draft_provider == "gsheets" and settings.crm.provider != "gsheets":
+        if settings.secrets.gsheets_credentials_path is None:
+            log.error("secret_missing", key="GSHEETS_CREDENTIALS_PATH")
+            issues += 1
+
     if settings.compliance.unsubscribe_base_url is None:
         log.warning("optional_missing", key="UNSUBSCRIBE_BASE_URL")
     if not settings.paths.data_dir.exists():

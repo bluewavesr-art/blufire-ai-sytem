@@ -6,6 +6,72 @@ follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Backyard Builders launch: Google Places + website enrichment + bifurcated drafts/calls)
+- New optional `[places]` extra (`googlemaps==4.10.0`, `beautifulsoup4==4.12.3`).
+- `integrations/gplaces.py` — Google Places client wrapper. Text-search by
+  query + location, returns enriched details (name, address, phone, website).
+- `runtime/tools/prospect_gplaces.py` — Places implementation of
+  `prospect.search_people`. Maps Place results into `PersonRecord`s with
+  `email=None`, `company=<name>`, full phone/address/website populated.
+- `runtime/tools/enrich.py` — new `enrich.find_email` contract with
+  `FindEmailInput/Output`. Output carries an `EmailConfidence` literal
+  (`high`/`medium`/`low`/`none`) and a `source` string for debugging.
+- `runtime/tools/enrich_website.py` — first enrichment provider. Fetches the
+  homepage + 5 candidate paths (`/contact`, `/contact-us`, `/about`,
+  `/about-us`, `/team`), parses `mailto:` links (high confidence) then
+  regex-scans for raw email patterns (medium confidence). Aggressive
+  blocklist filters out asset filenames, social media, support widgets.
+- `runtime/tools/crm.py` — new `crm.append_call_lead` contract for
+  prospects with no findable email. Maps to a "Call List" sheet row.
+- `runtime/tools/crm_gsheets.py` — `GSheetsAppendCallLeadTool` impl for
+  the gsheets provider. New `GSheetsConfig.call_list_worksheet` setting
+  (default `"Call List"`).
+- `runtime/tools/prospect.py` — extended `PersonRecord` with `phone`,
+  `address`, `city`, `state`, `website` fields (provider-agnostic).
+- `runtime/orchestrators/daily_lead_gen.py` — **bifurcation logic**:
+  prospects with no email get an enrichment attempt; if still no email
+  but a phone is present they're routed to the Call List sink instead of
+  silently dropped. New counters: `enriched_email_found`,
+  `routed_to_call_list`, `skipped_unreachable`. Old `skipped_no_email`
+  counter retired.
+- `settings.ProspectProvider` literal extended with `gplaces`. New
+  `EnrichConfig.provider` literal (`website`, `hunter`, `apollo` —
+  only `website` implemented). New `secrets.gplaces_api_key`.
+- Bootstrap dispatch: `PROSPECT_PROVIDERS` includes `gplaces`; new
+  `ENRICH_PROVIDERS` table with `website` mapped to `enrich_website.py`.
+- Backyard tenant config switched from Apollo to Places: three sheet
+  worksheets (`Leads`, `Drafts`, `Call List`), DFW property-management
+  searches, deployment README updated with GCP API key + service-account
+  setup steps for Places + Sheets.
+
+### Added (Backyard Builders launch: Google Sheets as CRM)
+- New optional `[gsheets]` extra (`gspread==6.1.4`, `google-auth==2.36.0`).
+- `integrations/gsheets.py` — service-account-authenticated client wrapper
+  with tenacity retry on Google API errors. Read-only Drive scope + read/
+  write Sheets scope.
+- `runtime/tools/crm_gsheets.py` — Sheets-as-CRM provider. `crm.search_contacts`
+  / `crm.create_contact` / `crm.list_contacts` operate on the configured
+  `Leads` worksheet. Operations that don't apply to a flat sheet (deals,
+  tasks, email logs) return soft "not_supported_by_provider" responses so
+  orchestrators degrade gracefully on sheets-only tenants.
+- `runtime/tools/email_gsheets.py` — Sheets-as-draft-sink provider. The
+  `email.create_draft` contract appends a row to the configured `Drafts`
+  worksheet. The operator copy-pastes the subject/body into Gmail and
+  updates the `status` column manually.
+- New `settings.gsheets` section (spreadsheet_url, leads_worksheet,
+  drafts_worksheet) and `secrets.gsheets_credentials_path` for the
+  service-account JSON path.
+- `gsheets` added to `CrmProvider` and `EmailDraftProvider` literals; wired
+  into `CRM_PROVIDERS` and `EMAIL_DRAFT_PROVIDERS` dispatch tables.
+- `packaging/tenants/backyard-builders.{yaml,env,system-prompt}.example` —
+  full tenant config template for the storm-damage fencing campaign
+  targeting DFW property managers + HOAs (~10 prospects/day, M-F 06:00 CST).
+- `packaging/systemd/blufire-leadgen-backyard.timer.example` — CST timer
+  override.
+- `packaging/tenants/backyard-builders.README.md` — step-by-step deployment
+  guide including GCP service-account setup, sheet sharing, and operator
+  daily workflow.
+
 ### Added (Phase 2 step 3: daily_lead_gen orchestrator + email.create_draft contract)
 - New tool contract `email.create_draft` (separate from `email.send_smtp`):
   creates a draft for human review rather than sending immediately. First
